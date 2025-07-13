@@ -17,7 +17,8 @@
 <body>
     <div id="info">
         WebXR Boids: Revival, Tossing, Predators & Force Punch<br>
-        Pinch voxels to revive • Grab boids to toss • Shake voxels for predators • Make fist and punch to blast!
+        Pinch voxels to revive • Grab boids to toss • Shake voxels for predators • Make fist and punch to blast!<br>
+        <small>Point with right hand for 3 seconds to teleport</small>
     </div>
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -110,6 +111,17 @@
         const CYCLE_MAX_DISTANCE = 60; // Maximum racing area
         const TRAIL_SEGMENT_LENGTH = 0.5; // Distance between trail segments
         const TRAIL_LIFETIME = 15; // Seconds before trail segments fade
+        
+        // Teleportation system
+        let teleportRaycaster = new THREE.Raycaster();
+        let teleportIndicator = null;
+        let teleportHoldStartTime = 0;
+        let teleportTargetPosition = null;
+        let teleportReticle = null;
+        let isPointingForTeleport = false;
+        const TELEPORT_HOLD_TIME = 3.0; // Seconds to hold for teleport
+        const TELEPORT_SHAKE_TOLERANCE = 0.2; // Allowance for hand shake
+        const TELEPORT_MAX_DISTANCE = 15; // Maximum teleport range
 
         // --- NEW: Obstacles for boids to avoid ---
         let obstacles = []; // Will be populated when trees are created
@@ -1629,6 +1641,9 @@
                 
                 // Initialize Tron light cycles
                 initializeLightCycles();
+                
+                // Initialize teleportation system
+                initializeTeleportSystem();
             }
             
             
@@ -2214,6 +2229,202 @@
             }
         }
         
+        function initializeTeleportSystem() {
+            console.log('📍 Initializing teleportation system...');
+            
+            // Create teleport reticle (targeting circle)
+            const reticleGeometry = new THREE.RingGeometry(0.3, 0.5, 16);
+            const reticleMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            teleportReticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
+            teleportReticle.rotation.x = -Math.PI / 2; // Lay flat on ground
+            teleportReticle.visible = false;
+            scene.add(teleportReticle);
+            
+            // Create teleport progress indicator (expanding ring)
+            const indicatorGeometry = new THREE.RingGeometry(0.1, 0.2, 16);
+            const indicatorMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00, 
+                transparent: true, 
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            teleportIndicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+            teleportIndicator.rotation.x = -Math.PI / 2;
+            teleportIndicator.visible = false;
+            scene.add(teleportIndicator);
+            
+            console.log('✅ Teleportation system initialized!');
+        }
+        
+        function handleTeleportation(hand, elapsedTime) {
+            try {
+                if (!hand.userData.isReady || !hand.userData.tipPositions.INDEX) return;
+                
+                const isPointing = detectPointingGesture(hand);
+                
+                if (isPointing) {
+                    // Perform raycast from pointing finger
+                    const rayDirection = getPointingDirection(hand);
+                    const rayOrigin = hand.userData.tipPositions.INDEX.clone();
+                    
+                    teleportRaycaster.set(rayOrigin, rayDirection);
+                    
+                    // Raycast against ground plane (y = 0)
+                    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+                    const intersectPoint = new THREE.Vector3();
+                    teleportRaycaster.ray.intersectPlane(groundPlane, intersectPoint);
+                    
+                    if (intersectPoint) {
+                        const distance = rayOrigin.distanceTo(intersectPoint);
+                        
+                        // Check if within teleport range
+                        if (distance <= TELEPORT_MAX_DISTANCE) {
+                            // Show reticle at target location
+                            teleportReticle.position.copy(intersectPoint);
+                            teleportReticle.visible = true;
+                            
+                            // Check if this is a new pointing gesture or continuation
+                            if (!isPointingForTeleport) {
+                                // Start new teleport attempt
+                                teleportHoldStartTime = elapsedTime;
+                                teleportTargetPosition = intersectPoint.clone();
+                                isPointingForTeleport = true;
+                                console.log('📍 Teleport targeting started...');
+                            } else {
+                                // Check if pointing is stable (accounting for hand shake)
+                                const positionDrift = intersectPoint.distanceTo(teleportTargetPosition);
+                                
+                                if (positionDrift > TELEPORT_SHAKE_TOLERANCE) {
+                                    // Too much movement, restart timer
+                                    teleportHoldStartTime = elapsedTime;
+                                    teleportTargetPosition = intersectPoint.clone();
+                                } else {
+                                    // Stable pointing, check progress
+                                    const holdTime = elapsedTime - teleportHoldStartTime;
+                                    const progress = Math.min(holdTime / TELEPORT_HOLD_TIME, 1.0);
+                                    
+                                    // Update progress indicator
+                                    teleportIndicator.position.copy(intersectPoint);
+                                    teleportIndicator.visible = true;
+                                    
+                                    // Scale indicator based on progress
+                                    const scale = 0.5 + (progress * 1.5);
+                                    teleportIndicator.scale.set(scale, 1, scale);
+                                    
+                                    // Change color based on progress
+                                    const hue = progress * 0.33; // Green to red
+                                    teleportIndicator.material.color.setHSL(hue, 1, 0.5);
+                                    
+                                    // Teleport when timer completes
+                                    if (progress >= 1.0) {
+                                        performTeleport(intersectPoint);
+                                        resetTeleportState();
+                                    }
+                                }
+                            }
+                        } else {
+                            // Out of range
+                            resetTeleportState();
+                        }
+                    } else {
+                        // No ground intersection
+                        resetTeleportState();
+                    }
+                } else {
+                    // Not pointing anymore
+                    resetTeleportState();
+                }
+                
+            } catch (error) {
+                console.warn('Teleportation error:', error);
+                resetTeleportState();
+            }
+        }
+        
+        function detectPointingGesture(hand) {
+            // Check if index finger is extended while other fingers are curled
+            if (!hand.userData.tipPositions.INDEX || !hand.userData.tipPositions.MIDDLE) {
+                return false;
+            }
+            
+            const palmPosition = hand.userData.tipPositions.MIDDLE; // Approximate palm
+            const indexTip = hand.userData.tipPositions.INDEX;
+            
+            // Simple pointing detection: index finger extended away from palm
+            const pointingDistance = indexTip.distanceTo(palmPosition);
+            return pointingDistance > 0.08; // Threshold for extended finger
+        }
+        
+        function getPointingDirection(hand) {
+            // Calculate pointing direction from palm toward index fingertip
+            const palmPosition = hand.userData.tipPositions.MIDDLE; // Approximate palm
+            const indexTip = hand.userData.tipPositions.INDEX;
+            
+            const direction = new THREE.Vector3().subVectors(indexTip, palmPosition);
+            direction.normalize();
+            
+            return direction;
+        }
+        
+        function performTeleport(targetPosition) {
+            try {
+                console.log('🚀 Teleporting to:', targetPosition);
+                
+                // Move the scene to effectively teleport the user
+                const currentOffset = scene.position.clone();
+                const userPosition = new THREE.Vector3(8, 1.8, 8); // Current user offset
+                
+                // Calculate new scene offset to place user at target
+                const newOffset = new THREE.Vector3(
+                    userPosition.x - targetPosition.x,
+                    userPosition.y - targetPosition.y,
+                    userPosition.z - targetPosition.z
+                );
+                
+                scene.position.copy(newOffset);
+                
+                // Create teleport effect
+                createTeleportEffect(targetPosition);
+                
+                console.log('✅ Teleport completed!');
+                
+            } catch (error) {
+                console.warn('Teleport execution error:', error);
+            }
+        }
+        
+        function createTeleportEffect(position) {
+            // Create particle effect at teleport location
+            const particleCount = 20;
+            for (let i = 0; i < particleCount; i++) {
+                const particle = {
+                    position: position.clone().add(new THREE.Vector3(0, 0.1, 0)),
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        Math.random() * 2,
+                        (Math.random() - 0.5) * 2
+                    ),
+                    life: 1.5,
+                    color: new THREE.Color().setHSL(0.5, 1, 0.8) // Cyan teleport effect
+                };
+                particles.push(particle);
+            }
+        }
+        
+        function resetTeleportState() {
+            isPointingForTeleport = false;
+            teleportTargetPosition = null;
+            teleportHoldStartTime = 0;
+            
+            if (teleportReticle) teleportReticle.visible = false;
+            if (teleportIndicator) teleportIndicator.visible = false;
+        }
+        
         function detectFist(hand) {
             try {
                 if (!hand.userData.isReady) return false;
@@ -2519,6 +2730,9 @@
                 // Handle Game of Life touch interaction
                 handleGameOfLifeTouch(hand1);
                 handleGameOfLifeTouch(hand2);
+                
+                // Handle teleportation (only use right hand to avoid conflicts)
+                handleTeleportation(hand2, elapsedTime);
                 
                 // Handle punch detection
                 [hand1, hand2].forEach((hand, index) => {
