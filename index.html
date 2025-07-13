@@ -1878,8 +1878,11 @@
             window.lastFountainSpawn = 0;
             
             // Pre-spawn some initial voxels for immediate visual effect
-            for (let i = 0; i < 10; i++) {
-                setTimeout(() => spawnFountainVoxel(), i * 100);
+            for (let i = 0; i < 8; i++) {
+                setTimeout(() => {
+                    spawnFountainVoxel();
+                    if (i === 0) console.log('Fountain system activated - initial voxels spawning');
+                }, i * 150);
             }
             
             // --- REVISED: Create two proxy meshes for holding, one for each hand ---
@@ -1908,7 +1911,7 @@
             const handModelFactory = new XRHandModelFactory();
             hand1 = renderer.xr.getHand(0);
             hand2 = renderer.xr.getHand(1);
-            [hand1, hand2].forEach(hand => {
+            [hand1, hand2].forEach((hand, index) => {
                 hand.userData.isReady = false;
                 hand.userData.isPinching = false;
                 hand.userData.heldVoxelIndex = null;
@@ -1923,28 +1926,90 @@
                 hand.userData.lastFistState = false;
                 hand.userData.punchVelocity = 0;
                 hand.userData.tipPositions = { THUMB: new THREE.Vector3(), INDEX: new THREE.Vector3(), MIDDLE: new THREE.Vector3() };
-                hand.add(handModelFactory.createHandModel(hand, "mesh"));
+                
+                // Create hand model with proper setup for Quest 3
+                const handModel = handModelFactory.createHandModel(hand, "mesh");
+                handModel.visible = true;
+                handModel.scale.setScalar(1.0);
+                hand.add(handModel);
+                
+                // Add larger, more visible hand indicators for Quest 3
+                const handSphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.05, 12, 12),
+                    new THREE.MeshBasicMaterial({ 
+                        color: index === 0 ? 0x00ff00 : 0x0000ff, 
+                        transparent: true, 
+                        opacity: 0.8,
+                        emissive: index === 0 ? 0x002200 : 0x000022
+                    })
+                );
+                hand.add(handSphere);
+                
+                // Add fingertip indicators
+                const fingerSphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.02, 8, 8),
+                    new THREE.MeshBasicMaterial({ 
+                        color: 0xffff00, 
+                        transparent: true, 
+                        opacity: 0.9,
+                        emissive: 0x444400
+                    })
+                );
+                hand.add(fingerSphere);
+                hand.userData.fingerIndicator = fingerSphere;
+                
                 scene.add(hand);
+                console.log(`Hand ${index} setup complete with visual indicators`);
             });
             
             // No controller setup needed for hand-only experience
 
             // Add VR session start/end handlers to control user position
             renderer.xr.addEventListener('sessionstart', () => {
-                // Hide UI elements in VR
+                // Hide ALL UI elements in VR to fix transparent box issue
                 const infoDiv = document.getElementById('info');
-                if (infoDiv) infoDiv.style.display = 'none';
+                const vrButton = document.querySelector('#vr-button');
+                const allDivs = document.querySelectorAll('div');
+                
+                if (infoDiv) {
+                    infoDiv.style.display = 'none';
+                    infoDiv.style.visibility = 'hidden';
+                    infoDiv.style.opacity = '0';
+                }
+                if (vrButton) {
+                    vrButton.style.display = 'none';
+                    vrButton.style.visibility = 'hidden';
+                }
+                
+                // Hide any other UI elements that might cause transparent overlay
+                allDivs.forEach(div => {
+                    if (div.style.position === 'absolute' || div.style.position === 'fixed') {
+                        div.style.display = 'none';
+                        div.style.visibility = 'hidden';
+                        div.style.opacity = '0';
+                    }
+                });
                 
                 // Offset the user position when entering VR with proper floor height
                 const offsetPosition = new THREE.Vector3(8, 1.8, 8); // Proper standing height
                 scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
-                console.log('VR session started - user positioned above ground level');
+                console.log('VR session started - all UI hidden, user positioned above ground level');
             });
             
             renderer.xr.addEventListener('sessionend', () => {
                 // Show UI elements when exiting VR
                 const infoDiv = document.getElementById('info');
-                if (infoDiv) infoDiv.style.display = 'block';
+                const vrButton = document.querySelector('#vr-button');
+                
+                if (infoDiv) {
+                    infoDiv.style.display = 'block';
+                    infoDiv.style.visibility = 'visible';
+                    infoDiv.style.opacity = '1';
+                }
+                if (vrButton) {
+                    vrButton.style.display = 'block';
+                    vrButton.style.visibility = 'visible';
+                }
                 
                 // Reset scene position when exiting VR
                 scene.position.set(0, 0, 0);
@@ -2148,6 +2213,14 @@
         
         function initializeLightCycles() {
             console.log('🏍️ Initializing Tron light cycles...');
+            
+            // Clear any existing light cycles
+            lightCycles.forEach(cycle => {
+                if (cycle.mesh && cycle.mesh.parent) {
+                    cycle.mesh.parent.remove(cycle.mesh);
+                }
+            });
+            lightCycles = [];
             
             // Create two light cycles with different team colors
             const teamColors = [0x00ffff, 0xff6600]; // Cyan and Orange
@@ -2842,6 +2915,11 @@
             });
             fountainVoxelsMesh.count = activeFountainCount;
             fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
+            
+            // Ensure fountain mesh is visible
+            if (fountainVoxelsMesh) {
+                fountainVoxelsMesh.visible = true;
+            }
 
             const aliveVoxelsMesh = scene.getObjectByName('alive_voxels');
             if (aliveVoxelsMesh && boids.length > 0) {
@@ -2956,8 +3034,12 @@
         function spawnFountainVoxel() {
             try {
                 // Find empty slot
-                const emptyIndex = fountainVoxels.findIndex(voxel => voxel === null);
-                if (emptyIndex === -1) return; // No empty slots
+                let emptyIndex = fountainVoxels.findIndex(voxel => voxel === null);
+                if (emptyIndex === -1) {
+                    // Remove oldest voxel to make space
+                    emptyIndex = 0;
+                    fountainVoxels[0] = null;
+                }
                 
                 // Create new voxel with fountain physics
                 const angle = Math.random() * Math.PI * 2;
@@ -2978,6 +3060,11 @@
                 };
                 
                 fountainVoxels[emptyIndex] = newVoxel;
+                
+                // Occasional debug output to confirm fountain activity
+                if (Math.random() < 0.05) {
+                    console.log(`Fountain active: ${fountainVoxels.filter(v => v?.active).length}/${fountainVoxelCount} voxels`);
+                }
                 
             } catch (error) {
                 console.warn('Fountain voxel spawn error:', error);
