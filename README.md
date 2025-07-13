@@ -6,8 +6,9 @@ An immersive WebXR experience that combines classic arcade games in a stunning v
 
 ### Core Experience
 - **Hand Tracking VR**: Fully controller-free experience designed for Meta Quest 3
-- **Boids Flocking Simulation**: 100 AI-driven entities with realistic flocking behavior
+- **Boids Flocking Simulation**: 50 AI-driven entities with realistic flocking behavior (optimized for Quest performance)
 - **Interactive Mechanics**: Grab, toss, shake, and punch your way through the environment
+- **Gesture-Based Teleportation**: Point and hold for 3 seconds to teleport (perfect for small VR spaces)
 
 ### Retro Arcade Games
 
@@ -52,11 +53,20 @@ An immersive WebXR experience that combines classic arcade games in a stunning v
 - Obstacle avoidance for boids
 - Cyan glowing aesthetic
 
+#### Gesture-Based Teleportation System
+- **Point to Target**: Extend right index finger toward desired location
+- **3-Second Hold Timer**: Visual progress indicator with shake tolerance
+- **15-Meter Range**: Suitable for exploring the entire arcade environment
+- **Visual Feedback**: Cyan targeting reticle and expanding progress ring
+- **Particle Effects**: Satisfying teleport visual with cyan particle burst
+- **Small Space Friendly**: Perfect for room-scale VR in limited physical areas
+
 ### Hand Interaction Mechanics
 - **Grab & Toss**: Pinch to grab boids and toss them with physics
 - **Shake to Create Predators**: Vigorous shaking transforms voxels into hunting predators
 - **Punch Blast**: Make a fist and punch to create force waves that affect boids
 - **Touch Interaction**: Touch Game of Life panels to toggle cell states
+- **Teleportation**: Point with right hand for 3 seconds to teleport (perfect for small VR spaces)
 
 ## 🛠️ Technical Details
 
@@ -112,7 +122,7 @@ Visit: `https://benlaken.github.io/webxr_arcade/`
 ### Hand Gestures
 - **Pinch**: Grab boids or fountain voxels
 - **Fist**: Create punch force blasts
-- **Point**: Touch Game of Life panels
+- **Point**: Touch Game of Life panels OR hold for 3 seconds to teleport
 - **Shake**: Transform held voxels into predators
 
 ### Desktop Fallback
