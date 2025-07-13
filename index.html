@@ -118,15 +118,21 @@
         const SHOOTING_STAR_SPAWN_RATE = 0.05; // Chance per second
         const SHOOTING_STAR_SPEED = 15.0;
         
-        // Tron Light Cycles system
+        // Tron Light Cycles Racing system
         let lightCycles = [];
         let lightTrails = [];
         const LIGHT_CYCLE_COUNT = 2;
-        const CYCLE_SPEED = 12.0; // Much faster for better visibility in VR
-        const CYCLE_MIN_DISTANCE = 22; // Minimum distance from user
-        const CYCLE_MAX_DISTANCE = 60; // Maximum racing area
-        const TRAIL_SEGMENT_LENGTH = 0.5; // Distance between trail segments
-        const TRAIL_LIFETIME = 15; // Seconds before trail segments fade
+        const CYCLE_SPEED = 8.0; // Moderate speed for strategic racing
+        const RACE_TRACK_LENGTH = 30; // Length of racing track
+        const RACE_LANE_WIDTH = 4; // Distance between racing lanes
+        const TRAIL_SEGMENT_LENGTH = 0.3; // Closer trail segments for denser walls
+        const TRAIL_LIFETIME = 30; // Longer lifetime for persistent light walls
+        const RACE_RESET_TIME = 8; // Seconds before race resets after winner
+        
+        // Racing state management
+        let raceState = 'racing'; // 'racing', 'victory', 'resetting'
+        let raceWinner = null;
+        let raceEndTime = 0;
         
         // Teleportation system
         let teleportRaycaster = new THREE.Raycaster();
@@ -1015,24 +1021,31 @@
             }
         }
         
-        // --- Tron Light Cycle Classes ---
+        // --- Tron Light Cycle Racing Classes ---
         class LightCycle {
-            constructor(teamColor, startPosition) {
-                // Adjust position for VR scene offset (8, 1.8, 8) like other elements
-                this.position = startPosition || new THREE.Vector3(
-                    8 + CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE),
-                    0.5, // Higher above ground to ensure visibility
-                    8 + CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE)
-                );
+            constructor(teamColor, lane, cycleId) {
+                this.cycleId = cycleId; // 0 or 1 for identification
+                this.lane = lane; // 0 = left lane, 1 = right lane
+                
+                // Start positions side by side at VR user location + offset
+                const startX = 8 + 15; // 15 units away from user
+                const startZ = 8 + (lane === 0 ? -RACE_LANE_WIDTH/2 : RACE_LANE_WIDTH/2);
+                
+                this.startPosition = new THREE.Vector3(startX, 0.5, startZ);
+                this.position = this.startPosition.clone();
                 this.velocity = new THREE.Vector3();
-                this.direction = Math.random() * Math.PI * 2;
+                this.direction = 0; // Start facing forward (along X axis)
                 this.speed = CYCLE_SPEED;
-                this.teamColor = teamColor || 0x00ffff;
+                this.teamColor = teamColor;
                 this.mesh = null;
                 this.lastTrailTime = 0;
-                this.nextTurnTime = Date.now() + (3000 + Math.random() * 7000); // Random turn interval
                 this.isAlive = true;
                 this.trailSegments = [];
+                
+                // Racing AI behavior
+                this.nextTurnTime = Date.now() + (2000 + Math.random() * 4000);
+                this.aggressiveness = Math.random() * 0.5 + 0.3; // How likely to make risky moves
+                this.racingStrategy = Math.random() > 0.5 ? 'aggressive' : 'defensive';
                 
                 this.createMesh();
                 this.setInitialVelocity();
@@ -1121,13 +1134,30 @@
                 );
             }
             
+            reset() {
+                this.position.copy(this.startPosition);
+                this.direction = 0; // Reset to forward direction
+                this.isAlive = true;
+                this.setInitialVelocity();
+                this.nextTurnTime = Date.now() + (2000 + Math.random() * 4000);
+                
+                // Clear old trail segments
+                this.trailSegments.forEach(segment => {
+                    if (segment && segment.mesh) {
+                        scene.remove(segment.mesh);
+                    }
+                });
+                this.trailSegments = [];
+                
+                console.log(`🏍️ Light cycle ${this.cycleId} reset for new race`);
+            }
+            
             update(deltaTime, elapsedTime) {
                 if (!this.isAlive) return;
                 
-                // Check if it's time for a random turn
-                if (Date.now() > this.nextTurnTime) {
-                    this.makeRandomTurn();
-                    this.nextTurnTime = Date.now() + (2000 + Math.random() * 8000);
+                // Racing AI logic
+                if (raceState === 'racing') {
+                    this.updateRacingAI(deltaTime, elapsedTime);
                 }
                 
                 // Update position
@@ -1137,8 +1167,8 @@
                 // Keep light cycle above ground level
                 this.position.y = Math.max(this.position.y, 0.5);
                 
-                // Keep within racing boundaries and avoid user area
-                this.checkBoundaries();
+                // Check for collisions with light walls
+                this.checkTrailCollisions();
                 
                 // Update mesh
                 if (this.mesh) {
@@ -1147,8 +1177,8 @@
                     
                     // Debug logging for movement
                     const moved = oldPosition.distanceTo(this.position) > 0.01;
-                    if (moved && Math.random() < 0.02) { // Occasional debug output
-                        console.log(`🏍️ Light cycle moving: pos(${this.position.x.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) speed=${this.speed} direction=${this.direction.toFixed(2)}`);
+                    if (moved && Math.random() < 0.01) {
+                        console.log(`🏍️ Cycle ${this.cycleId} racing: pos(${this.position.x.toFixed(1)}, ${this.position.z.toFixed(1)}) strategy=${this.racingStrategy}`);
                     }
                 }
                 
@@ -1156,49 +1186,141 @@
                 this.updateTrail(elapsedTime);
             }
             
-            makeRandomTurn() {
-                // Choose a new direction (90-degree turns like classic Tron)
-                const turnOptions = [
-                    this.direction + Math.PI / 2,   // Right turn
-                    this.direction - Math.PI / 2,   // Left turn
-                    this.direction                  // Continue straight (less likely)
-                ];
+            updateRacingAI(deltaTime, elapsedTime) {
+                // Get opponent position
+                const opponent = lightCycles.find(cycle => cycle.cycleId !== this.cycleId);
+                if (!opponent || !opponent.isAlive) return;
                 
-                // Weight towards turning for more interesting paths
-                const randomChoice = Math.random();
-                if (randomChoice < 0.4) {
-                    this.direction = turnOptions[0]; // Right
-                } else if (randomChoice < 0.8) {
-                    this.direction = turnOptions[1]; // Left
-                } else {
-                    this.direction = turnOptions[2]; // Straight
+                // Strategic racing behavior
+                if (Date.now() > this.nextTurnTime) {
+                    this.makeStrategicTurn(opponent);
+                    this.nextTurnTime = Date.now() + (1500 + Math.random() * 3000);
                 }
-                
-                // Update velocity
-                this.setInitialVelocity();
-                
-                console.log(`🏍️ Light cycle turned! New direction: ${(this.direction * 180 / Math.PI).toFixed(1)}°`);
             }
             
-            checkBoundaries() {
-                // Account for VR scene offset (8, 1.8, 8) - measure distance from VR user position
-                const userX = 8, userZ = 8; // VR user position after scene offset
-                const distanceFromUser = Math.sqrt((this.position.x - userX) * (this.position.x - userX) + (this.position.z - userZ) * (this.position.z - userZ));
+            makeStrategicTurn(opponent) {
+                // Strategic racing turns based on opponent position and strategy
+                const toOpponent = new THREE.Vector3().subVectors(opponent.position, this.position);
+                const distanceToOpponent = toOpponent.length();
                 
-                // If too close to user, turn away
-                if (distanceFromUser < CYCLE_MIN_DISTANCE) {
-                    const awayFromUser = Math.atan2(this.position.z - userZ, this.position.x - userX);
-                    this.direction = awayFromUser;
-                    this.setInitialVelocity();
-                    console.log('🏍️ Light cycle turning away from user');
+                let newDirection;
+                
+                if (this.racingStrategy === 'aggressive' && distanceToOpponent < 8) {
+                    // Try to cut off opponent or force them into walls
+                    if (Math.random() < this.aggressiveness) {
+                        // Turn toward opponent to create blocking moves
+                        const angleToOpponent = Math.atan2(toOpponent.z, toOpponent.x);
+                        const turnOptions = [
+                            angleToOpponent,                    // Direct intercept
+                            angleToOpponent + Math.PI / 4,      // Cutting angle
+                            angleToOpponent - Math.PI / 4       // Alternate cutting angle
+                        ];
+                        newDirection = turnOptions[Math.floor(Math.random() * turnOptions.length)];
+                        console.log(`⚔️ Cycle ${this.cycleId} making aggressive move toward opponent!`);
+                    } else {
+                        newDirection = this.makeRandomTurn90();
+                    }
+                } else {
+                    // Defensive or standard racing - avoid opponent and create strategic walls
+                    if (Math.random() < 0.7) {
+                        newDirection = this.makeRandomTurn90();
+                    } else {
+                        // Sometimes make a defensive move away from opponent
+                        const awayFromOpponent = Math.atan2(-toOpponent.z, -toOpponent.x);
+                        newDirection = awayFromOpponent + (Math.random() - 0.5) * Math.PI / 2;
+                        console.log(`🛡️ Cycle ${this.cycleId} making defensive move away from opponent`);
+                    }
                 }
                 
-                // If too far out, turn toward user area
-                if (distanceFromUser > CYCLE_MAX_DISTANCE) {
-                    const towardUser = Math.atan2(userZ - this.position.z, userX - this.position.x);
-                    this.direction = towardUser + (Math.random() - 0.5) * Math.PI / 2; // Add some randomness
-                    this.setInitialVelocity();
-                    console.log('🏍️ Light cycle turning toward user area');
+                this.direction = newDirection;
+                this.setInitialVelocity();
+            }
+            
+            makeRandomTurn90() {
+                // Classic 90-degree Tron turns
+                const turnOptions = [
+                    this.direction + Math.PI / 2,   // Right
+                    this.direction - Math.PI / 2,   // Left
+                    this.direction                  // Straight (rare)
+                ];
+                
+                const weights = [0.45, 0.45, 0.1]; // Prefer turning over straight
+                const random = Math.random();
+                
+                if (random < weights[0]) {
+                    return turnOptions[0];
+                } else if (random < weights[0] + weights[1]) {
+                    return turnOptions[1];
+                } else {
+                    return turnOptions[2];
+                }
+            }
+            
+            checkTrailCollisions() {
+                // Check collision with all trail segments (including own trail after initial segment)
+                for (const trail of lightTrails) {
+                    if (!trail || !trail.isAlive) continue;
+                    
+                    // Skip own recent trail segments to prevent immediate collision
+                    if (trail.cycleId === this.cycleId && trail.age < 1.0) continue;
+                    
+                    const distanceToTrail = this.position.distanceTo(trail.position);
+                    
+                    if (distanceToTrail < 0.8) { // Collision threshold
+                        this.explode();
+                        return;
+                    }
+                }
+                
+                // Check boundaries - explode if too far from racing area
+                const userX = 8, userZ = 8;
+                const distanceFromUser = Math.sqrt((this.position.x - userX) * (this.position.x - userX) + (this.position.z - userZ) * (this.position.z - userZ));
+                
+                if (distanceFromUser > 40) { // Race boundary
+                    this.explode();
+                }
+            }
+            
+            explode() {
+                if (!this.isAlive) return;
+                
+                this.isAlive = false;
+                console.log(`💥 Light cycle ${this.cycleId} exploded! Creating explosion effect...`);
+                
+                // Create explosion effect
+                this.createExplosion();
+                
+                // Determine winner
+                const opponent = lightCycles.find(cycle => cycle.cycleId !== this.cycleId);
+                if (opponent && opponent.isAlive && raceState === 'racing') {
+                    raceWinner = opponent.cycleId;
+                    raceState = 'victory';
+                    raceEndTime = Date.now();
+                    console.log(`🏆 Light cycle ${raceWinner} wins the race!`);
+                }
+            }
+            
+            createExplosion() {
+                // Create dramatic explosion effect at cycle position
+                try {
+                    const particleCount = 20;
+                    for (let i = 0; i < particleCount; i++) {
+                        const particle = {
+                            position: this.position.clone(),
+                            velocity: new THREE.Vector3(
+                                (Math.random() - 0.5) * 15,
+                                Math.random() * 10 + 5,
+                                (Math.random() - 0.5) * 15
+                            ),
+                            life: 2.0,
+                            maxLife: 2.0,
+                            color: this.teamColor,
+                            size: 0.3 + Math.random() * 0.4
+                        };
+                        particles.push(particle);
+                    }
+                } catch (error) {
+                    console.warn('Light cycle explosion error:', error);
                 }
             }
             
@@ -1207,7 +1329,7 @@
                 if (this.trailSegments.length === 0 || 
                     this.position.distanceTo(this.trailSegments[this.trailSegments.length - 1].position) > TRAIL_SEGMENT_LENGTH) {
                     
-                    const trailSegment = new LightTrail(this.position.clone(), this.teamColor, elapsedTime);
+                    const trailSegment = new LightTrail(this.position.clone(), this.teamColor, elapsedTime, this.cycleId);
                     this.trailSegments.push(trailSegment);
                     lightTrails.push(trailSegment);
                 }
@@ -1227,10 +1349,12 @@
         }
         
         class LightTrail {
-            constructor(position, color, creationTime) {
+            constructor(position, color, creationTime, cycleId) {
                 this.position = position.clone();
                 this.color = color;
                 this.creationTime = creationTime;
+                this.cycleId = cycleId; // Which cycle created this trail
+                this.age = 0;
                 this.isAlive = true;
                 this.mesh = null;
                 
@@ -1251,9 +1375,9 @@
             }
             
             update(elapsedTime) {
-                // Fade out over time
-                const age = elapsedTime - this.creationTime;
-                const fadeProgress = age / TRAIL_LIFETIME;
+                // Update age and fade out over time
+                this.age = elapsedTime - this.creationTime;
+                const fadeProgress = this.age / TRAIL_LIFETIME;
                 
                 if (fadeProgress >= 1.0) {
                     this.destroy();
@@ -2451,9 +2575,9 @@
         }
         
         function initializeLightCycles() {
-            console.log('🏍️ Initializing Tron light cycles...');
+            console.log('🏍️ Initializing Tron light cycle racing...');
             
-            // Clear any existing light cycles
+            // Clear any existing light cycles and trails
             lightCycles.forEach(cycle => {
                 if (cycle.mesh && cycle.mesh.parent) {
                     cycle.mesh.parent.remove(cycle.mesh);
@@ -2461,24 +2585,46 @@
             });
             lightCycles = [];
             
-            // Create two light cycles with different team colors
-            const teamColors = [0x00ffff, 0xff6600]; // Cyan and Orange
-            const startPositions = [
-                new THREE.Vector3(CYCLE_MIN_DISTANCE + 5, 0, CYCLE_MIN_DISTANCE + 5),
-                new THREE.Vector3(-CYCLE_MIN_DISTANCE - 5, 0, -CYCLE_MIN_DISTANCE - 5)
-            ];
+            // Clear all trails
+            lightTrails.forEach(trail => {
+                if (trail && trail.mesh) {
+                    scene.remove(trail.mesh);
+                }
+            });
+            lightTrails = [];
+            
+            // Reset race state
+            raceState = 'racing';
+            raceWinner = null;
+            raceEndTime = 0;
+            
+            // Create two light cycles for side-by-side racing
+            const teamColors = [0x00ffff, 0xff6600]; // Cyan and Orange for clear distinction
             
             for (let i = 0; i < LIGHT_CYCLE_COUNT; i++) {
-                const cycle = new LightCycle(teamColors[i], startPositions[i]);
+                const cycle = new LightCycle(teamColors[i], i, i); // (teamColor, lane, cycleId)
                 lightCycles.push(cycle);
             }
             
-            console.log(`✅ Created ${LIGHT_CYCLE_COUNT} light cycles for racing!`);
+            console.log(`✅ Created ${LIGHT_CYCLE_COUNT} light cycles ready for racing battle!`);
         }
         
         function updateLightCycles(deltaTime, elapsedTime) {
             try {
-                // Update light cycles
+                // Race state management
+                if (raceState === 'victory') {
+                    // Check if it's time to reset the race
+                    if (Date.now() - raceEndTime > RACE_RESET_TIME * 1000) {
+                        resetRace();
+                    } else {
+                        // During victory phase, show victory celebration
+                        if (Math.random() < 0.02) {
+                            console.log(`🏆 Light cycle ${raceWinner} is victorious! Race resets in ${Math.ceil((RACE_RESET_TIME * 1000 - (Date.now() - raceEndTime)) / 1000)} seconds...`);
+                        }
+                    }
+                }
+                
+                // Update all light cycles
                 for (const cycle of lightCycles) {
                     cycle.update(deltaTime, elapsedTime);
                 }
@@ -2494,52 +2640,36 @@
                     }
                 }
                 
-                // Optional: Check for trail collisions between cycles
-                checkLightCycleCollisions();
-                
             } catch (error) {
                 console.warn('Light cycle update error:', error);
             }
         }
         
-        function checkLightCycleCollisions() {
-            // Simple collision detection between cycles and existing trails
-            for (const cycle of lightCycles) {
-                if (!cycle.isAlive) continue;
-                
-                for (const trail of lightTrails) {
-                    if (!trail.isAlive) continue;
-                    
-                    const distance = cycle.position.distanceTo(trail.position);
-                    if (distance < 1.0) {
-                        // Check if this trail belongs to the other cycle
-                        const trailBelongsToThisCycle = cycle.trailSegments.includes(trail);
-                        if (!trailBelongsToThisCycle) {
-                            // Collision! Make a dramatic turn to avoid (or rarely crash)
-                            if (Math.random() < 0.9) { // 90% chance to avoid
-                                cycle.makeRandomTurn();
-                                console.log('🏍️ Light cycle avoided collision!');
-                            } else {
-                                // Rare dramatic crash
-                                cycle.destroy();
-                                console.log('💥 Light cycle crashed into trail!');
-                                
-                                // Respawn after delay
-                                setTimeout(() => {
-                                    const newCycle = new LightCycle(cycle.teamColor);
-                                    const cycleIndex = lightCycles.indexOf(cycle);
-                                    if (cycleIndex !== -1) {
-                                        lightCycles[cycleIndex] = newCycle;
-                                    }
-                                    console.log('🏍️ New light cycle deployed!');
-                                }, 3000);
-                            }
-                            break;
-                        }
-                    }
+        function resetRace() {
+            console.log('🔄 Resetting light cycle race for another epic battle!');
+            
+            // Reset race state
+            raceState = 'racing';
+            raceWinner = null;
+            raceEndTime = 0;
+            
+            // Reset both cycles
+            lightCycles.forEach(cycle => {
+                cycle.reset();
+            });
+            
+            // Clear old trails for fresh start
+            lightTrails.forEach(trail => {
+                if (trail && trail.mesh) {
+                    scene.remove(trail.mesh);
                 }
-            }
+            });
+            lightTrails = [];
+            
+            console.log('✅ Race reset complete - let the battle begin!');
         }
+        
+        // Light cycle collision detection is now handled within each cycle's update method
         
         function initializeTeleportSystem() {
             console.log('📍 Initializing teleportation system...');
