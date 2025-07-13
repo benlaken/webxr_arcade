@@ -1,0 +1,3030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>WebXR Boids with Glowing Tree</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #111; color: #fff; overflow: hidden; }
+        #info { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 15px 25px; background-color: rgba(0, 0, 0, 0.5); border-radius: 12px; text-align: center; font-size: 16px; z-index: 10; max-width: 90%; }
+        #vr-button { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; border: 1px solid #fff; background-color: rgba(0,0,0,0.5); color: #fff; padding: 12px 24px; border-radius: 999px; cursor: pointer; font-weight: 600; }
+        #vr-button:hover { background-color: rgba(255,255,255,0.2); }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="info">
+        WebXR Boids: Revival, Tossing, Predators & Force Punch<br>
+        Pinch voxels to revive • Grab boids to toss • Shake voxels for predators • Make fist and punch to blast!
+    </div>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
+
+        let camera, scene, renderer, clock;
+        let boids = [];
+        let predators = [];
+        let particles = [];
+        let hand1, hand2;
+        
+        let interactiveVoxels = [];
+        let fountainVoxels = [];
+        let heldVoxelMesh1, heldVoxelMesh2;
+        let fountainMesh;
+        let fountainVoxelsMesh;
+        let monolithPanels = [];
+        let gameOfLifeGrid = [];
+        let gameOfLifeRunning = false;
+        let lastGameOfLifeUpdate = 0;
+        const GRID_SIZE_X = 16; // Horizontal panels
+        const GRID_SIZE_Y = 80; // Vertical panels (covering full monolith from top to floor)
+        const GAME_OF_LIFE_SPEED = 0.5; // Updates per second
+        const REVIVAL_TIME = 3; 
+        const SHAKE_THRESHOLD = 0.8; // Reduced shake intensity needed to create predator
+
+        const initialBoidCount = 100;
+        const interactiveVoxelCount = 0; // Replaced with fountain system
+        const fountainVoxelCount = 200; // Max voxels in fountain at once
+        const fountainSpawnRate = 6; // Voxels per second - more active fountain
+        const voxelLifetime = 15; // Seconds before voxels fade away
+        const boundSize = 20;
+        
+        // Punch blast variables
+        let punchCooldown1 = 0;
+        let punchCooldown2 = 0;
+        const PUNCH_COOLDOWN = 0.5; // Seconds between punches
+        const PUNCH_FORCE_RADIUS = 2.0; // Radius of punch force blast
+        
+        // Performance optimization variables
+        let frameCount = 0;
+        const OPTIMIZATION_INTERVAL = 10; // Update every 10 frames
+        
+        // Battle Zone tank system
+        let tanks = [];
+        let projectiles = [];
+        const TANK_COUNT = 12;
+        const BATTLEFIELD_MIN_DISTANCE = 25; // Minimum distance from user
+        const BATTLEFIELD_MAX_DISTANCE = 80; // Maximum distance for tank spawning
+        const TANK_SPEED = 0.8;
+        const PROJECTILE_SPEED = 3.0;
+        const TANK_FIRE_RATE = 0.3; // Shots per second
+        const TANK_DETECTION_RANGE = 15;
+        
+        // Sky Asteroids system
+        let stars = [];
+        let asteroids = [];
+        let spaceShips = [];
+        let spaceBullets = [];
+        let shootingStars = [];
+        const STAR_COUNT = 200;
+        const ASTEROID_COUNT = 8;
+        const SPACESHIP_COUNT = 3;
+        const SKY_HEIGHT = 30; // Height above user for sky battle
+        const SKY_RADIUS = 50; // Radius of sky battle area
+        const ASTEROID_SPEED = 1.0;
+        const SPACESHIP_SPEED = 2.0;
+        const SPACE_BULLET_SPEED = 8.0;
+        const SHOOTING_STAR_SPAWN_RATE = 0.05; // Chance per second
+        const SHOOTING_STAR_SPEED = 15.0;
+        
+        // Tron Light Cycles system
+        let lightCycles = [];
+        let lightTrails = [];
+        const LIGHT_CYCLE_COUNT = 2;
+        const CYCLE_SPEED = 4.0;
+        const CYCLE_MIN_DISTANCE = 22; // Minimum distance from user
+        const CYCLE_MAX_DISTANCE = 60; // Maximum racing area
+        const TRAIL_SEGMENT_LENGTH = 0.5; // Distance between trail segments
+        const TRAIL_LIFETIME = 15; // Seconds before trail segments fade
+
+        // --- NEW: Obstacles for boids to avoid ---
+        let obstacles = []; // Will be populated when trees are created
+        
+        // --- Battle Zone Tank Class ---
+        class BattleTank {
+            constructor(position, team) {
+                this.position = position || new THREE.Vector3();
+                this.rotation = Math.random() * Math.PI * 2;
+                this.velocity = new THREE.Vector3();
+                this.team = team || 0; // 0 or 1 for different teams
+                this.health = 3;
+                this.lastFireTime = 0;
+                this.target = null;
+                this.mesh = null;
+                this.turretRotation = 0;
+                this.state = 'patrol'; // patrol, engage, retreat
+                this.patrolTarget = this.generatePatrolTarget();
+                this.maxSpeed = TANK_SPEED;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const tankGroup = new THREE.Group();
+                
+                // Tank body (wireframe box)
+                const bodyGeometry = new THREE.BoxGeometry(1.2, 0.8, 2.0);
+                const bodyMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.team === 0 ? 0x00ff00 : 0xff0000,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.4;
+                tankGroup.add(body);
+                
+                // Tank turret (wireframe cylinder)
+                const turretGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 8);
+                const turretMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.team === 0 ? 0x00aa00 : 0xaa0000,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const turret = new THREE.Mesh(turretGeometry, turretMaterial);
+                turret.position.y = 1.0;
+                tankGroup.add(turret);
+                
+                // Tank barrel (wireframe cylinder)
+                const barrelGeometry = new THREE.CylinderGeometry(0.08, 0.08, 1.5, 6);
+                const barrelMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.team === 0 ? 0x00ff00 : 0xff0000,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+                barrel.rotation.z = Math.PI / 2;
+                barrel.position.set(0.75, 1.0, 0);
+                turret.add(barrel);
+                
+                this.mesh = tankGroup;
+                this.turret = turret;
+                this.barrel = barrel;
+                scene.add(tankGroup);
+            }
+            
+            generatePatrolTarget() {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
+                return new THREE.Vector3(
+                    Math.cos(angle) * distance,
+                    0,
+                    Math.sin(angle) * distance
+                );
+            }
+            
+            update(deltaTime, elapsedTime) {
+                if (this.health <= 0) return;
+                
+                // Find nearest enemy tank
+                this.findTarget();
+                
+                // Update AI state
+                this.updateAI(deltaTime);
+                
+                // Update movement
+                this.updateMovement(deltaTime);
+                
+                // Update mesh position and rotation
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                    this.mesh.rotation.y = this.rotation;
+                }
+                
+                // Update turret rotation towards target
+                if (this.target && this.turret) {
+                    const targetDirection = new THREE.Vector3().subVectors(this.target.position, this.position);
+                    this.turretRotation = Math.atan2(targetDirection.x, targetDirection.z);
+                    this.turret.rotation.y = this.turretRotation - this.rotation;
+                }
+                
+                // Try to fire
+                this.tryFire(elapsedTime);
+            }
+            
+            findTarget() {
+                let closestEnemy = null;
+                let closestDistance = TANK_DETECTION_RANGE;
+                
+                for (const tank of tanks) {
+                    if (tank === this || tank.team === this.team || tank.health <= 0) continue;
+                    
+                    const distance = this.position.distanceTo(tank.position);
+                    if (distance < closestDistance) {
+                        closestEnemy = tank;
+                        closestDistance = distance;
+                    }
+                }
+                
+                this.target = closestEnemy;
+            }
+            
+            updateAI(deltaTime) {
+                if (this.target) {
+                    this.state = 'engage';
+                } else if (this.position.distanceTo(this.patrolTarget) < 2.0) {
+                    this.patrolTarget = this.generatePatrolTarget();
+                    this.state = 'patrol';
+                } else {
+                    this.state = 'patrol';
+                }
+            }
+            
+            updateMovement(deltaTime) {
+                let targetPos = this.patrolTarget;
+                
+                if (this.state === 'engage' && this.target) {
+                    // Move towards enemy but maintain some distance
+                    const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
+                    const distance = toTarget.length();
+                    
+                    if (distance > 8.0) {
+                        targetPos = this.target.position;
+                    } else if (distance < 5.0) {
+                        // Retreat slightly
+                        targetPos = new THREE.Vector3().subVectors(this.position, toTarget.normalize().multiplyScalar(3));
+                    } else {
+                        // Circle around target
+                        const perpendicular = new THREE.Vector3(-toTarget.z, 0, toTarget.x).normalize();
+                        targetPos = new THREE.Vector3().addVectors(this.position, perpendicular.multiplyScalar(2));
+                    }
+                }
+                
+                // Move towards target position
+                const direction = new THREE.Vector3().subVectors(targetPos, this.position);
+                direction.y = 0; // Keep on ground
+                
+                if (direction.length() > 0.1) {
+                    direction.normalize();
+                    this.velocity.lerp(direction.multiplyScalar(this.maxSpeed), deltaTime * 2.0);
+                    this.rotation = Math.atan2(this.velocity.x, this.velocity.z);
+                }
+                
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                this.position.y = 0; // Keep on ground
+            }
+            
+            tryFire(elapsedTime) {
+                if (!this.target || this.health <= 0) return;
+                if (elapsedTime - this.lastFireTime < (1.0 / TANK_FIRE_RATE)) return;
+                
+                const distance = this.position.distanceTo(this.target.position);
+                if (distance > TANK_DETECTION_RANGE) return;
+                
+                // Fire projectile
+                this.fire();
+                this.lastFireTime = elapsedTime;
+            }
+            
+            fire() {
+                if (!this.barrel) return;
+                
+                const barrelEnd = new THREE.Vector3();
+                this.barrel.getWorldPosition(barrelEnd);
+                
+                const direction = new THREE.Vector3().subVectors(this.target.position, barrelEnd);
+                direction.y += 0.5; // Slight upward trajectory
+                direction.normalize();
+                
+                const projectile = new Projectile(barrelEnd.clone(), direction, this.team, this);
+                projectiles.push(projectile);
+                
+                console.log('🔥 Tank fired!');
+            }
+            
+            takeDamage() {
+                this.health--;
+                if (this.health <= 0) {
+                    this.destroy();
+                }
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+                console.log('💥 Tank destroyed!');
+            }
+        }
+        
+        // --- Projectile Class ---
+        class Projectile {
+            constructor(position, direction, team, shooter) {
+                this.position = position.clone();
+                this.velocity = direction.clone().multiplyScalar(PROJECTILE_SPEED);
+                this.team = team;
+                this.shooter = shooter;
+                this.life = 5.0; // Seconds before disappearing
+                this.mesh = null;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const geometry = new THREE.SphereGeometry(0.05, 6, 6);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: this.team === 0 ? 0x00ffff : 0xffff00,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            update(deltaTime) {
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                this.life -= deltaTime;
+                
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                }
+                
+                // Check collision with tanks
+                for (const tank of tanks) {
+                    if (tank === this.shooter || tank.team === this.team || tank.health <= 0) continue;
+                    
+                    const distance = this.position.distanceTo(tank.position);
+                    if (distance < 1.5) {
+                        tank.takeDamage();
+                        this.explode();
+                        return true; // Mark for removal
+                    }
+                }
+                
+                // Remove if life expired or hit ground
+                if (this.life <= 0 || this.position.y < -1) {
+                    this.destroy();
+                    return true; // Mark for removal
+                }
+                
+                return false;
+            }
+            
+            explode() {
+                // Create explosion effect
+                createProjectileExplosion(this.position.clone());
+                this.destroy();
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+            }
+        }
+        
+        // --- Sky Asteroids Classes ---
+        class Star {
+            constructor() {
+                this.position = new THREE.Vector3(
+                    (Math.random() - 0.5) * SKY_RADIUS * 2,
+                    SKY_HEIGHT + Math.random() * 20,
+                    (Math.random() - 0.5) * SKY_RADIUS * 2
+                );
+                this.brightness = Math.random() * 0.8 + 0.2;
+                this.twinkleSpeed = Math.random() * 2 + 1;
+                this.mesh = null;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const geometry = new THREE.SphereGeometry(0.02, 4, 4);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: this.brightness
+                });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            update(elapsedTime) {
+                if (this.mesh) {
+                    const twinkle = (Math.sin(elapsedTime * this.twinkleSpeed) + 1) / 2;
+                    this.mesh.material.opacity = this.brightness * (0.3 + 0.7 * twinkle);
+                }
+            }
+        }
+        
+        class Asteroid {
+            constructor(position, size = 'large') {
+                this.position = position || new THREE.Vector3(
+                    (Math.random() - 0.5) * SKY_RADIUS,
+                    SKY_HEIGHT + Math.random() * 10,
+                    (Math.random() - 0.5) * SKY_RADIUS
+                );
+                this.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * ASTEROID_SPEED,
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 0.5,
+                    (Math.random() - 0.5) * ASTEROID_SPEED
+                );
+                this.rotation = new THREE.Vector3(
+                    Math.random() * 0.02,
+                    Math.random() * 0.02,
+                    Math.random() * 0.02
+                );
+                this.size = size; // large, medium, small
+                this.health = size === 'large' ? 3 : size === 'medium' ? 2 : 1;
+                this.mesh = null;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const sizes = { large: 2.0, medium: 1.2, small: 0.7 };
+                const radius = sizes[this.size];
+                
+                // Create irregular asteroid shape
+                const geometry = new THREE.DodecahedronGeometry(radius, 0);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0x888888,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            update(deltaTime) {
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                    this.mesh.rotation.x += this.rotation.x;
+                    this.mesh.rotation.y += this.rotation.y;
+                    this.mesh.rotation.z += this.rotation.z;
+                }
+                
+                // Wrap around sky boundaries
+                if (Math.abs(this.position.x) > SKY_RADIUS) {
+                    this.position.x = -Math.sign(this.position.x) * SKY_RADIUS;
+                }
+                if (Math.abs(this.position.z) > SKY_RADIUS) {
+                    this.position.z = -Math.sign(this.position.z) * SKY_RADIUS;
+                }
+                if (this.position.y < SKY_HEIGHT - 5) {
+                    this.position.y = SKY_HEIGHT + 15;
+                }
+                if (this.position.y > SKY_HEIGHT + 15) {
+                    this.position.y = SKY_HEIGHT - 5;
+                }
+            }
+            
+            takeDamage() {
+                this.health--;
+                if (this.health <= 0) {
+                    this.split();
+                    return true; // Mark for removal
+                }
+                return false;
+            }
+            
+            split() {
+                if (this.size === 'large') {
+                    // Split into 2 medium asteroids
+                    for (let i = 0; i < 2; i++) {
+                        const offset = new THREE.Vector3(
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 2
+                        );
+                        const newAsteroid = new Asteroid(this.position.clone().add(offset), 'medium');
+                        asteroids.push(newAsteroid);
+                    }
+                } else if (this.size === 'medium') {
+                    // Split into 2 small asteroids
+                    for (let i = 0; i < 2; i++) {
+                        const offset = new THREE.Vector3(
+                            (Math.random() - 0.5) * 1,
+                            (Math.random() - 0.5) * 1,
+                            (Math.random() - 0.5) * 1
+                        );
+                        const newAsteroid = new Asteroid(this.position.clone().add(offset), 'small');
+                        asteroids.push(newAsteroid);
+                    }
+                }
+                
+                this.destroy();
+                console.log(`💥 ${this.size} asteroid destroyed!`);
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+            }
+        }
+        
+        class SpaceShip {
+            constructor() {
+                this.position = new THREE.Vector3(
+                    (Math.random() - 0.5) * SKY_RADIUS,
+                    SKY_HEIGHT + Math.random() * 10,
+                    (Math.random() - 0.5) * SKY_RADIUS
+                );
+                this.velocity = new THREE.Vector3();
+                this.rotation = Math.random() * Math.PI * 2;
+                this.angularVelocity = 0;
+                this.target = null;
+                this.lastFireTime = 0;
+                this.mesh = null;
+                this.thrust = false;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const shipGroup = new THREE.Group();
+                
+                // Classic triangular ship shape
+                const shipGeometry = new THREE.ConeGeometry(0.3, 1.2, 3);
+                const shipMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ffff,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const ship = new THREE.Mesh(shipGeometry, shipMaterial);
+                ship.rotation.x = Math.PI / 2; // Point forward
+                shipGroup.add(ship);
+                
+                this.mesh = shipGroup;
+                this.mesh.position.copy(this.position);
+                scene.add(shipGroup);
+            }
+            
+            update(deltaTime, elapsedTime) {
+                // Find nearest asteroid
+                this.findTarget();
+                
+                // AI behavior
+                this.updateAI(deltaTime);
+                
+                // Update physics
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                this.rotation += this.angularVelocity * deltaTime;
+                
+                // Apply drag
+                this.velocity.multiplyScalar(0.98);
+                this.angularVelocity *= 0.95;
+                
+                // Update mesh
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                    this.mesh.rotation.y = this.rotation;
+                }
+                
+                // Wrap around boundaries
+                if (Math.abs(this.position.x) > SKY_RADIUS) {
+                    this.position.x = -Math.sign(this.position.x) * SKY_RADIUS;
+                }
+                if (Math.abs(this.position.z) > SKY_RADIUS) {
+                    this.position.z = -Math.sign(this.position.z) * SKY_RADIUS;
+                }
+                
+                // Try to fire
+                this.tryFire(elapsedTime);
+            }
+            
+            findTarget() {
+                let closestAsteroid = null;
+                let closestDistance = 20; // Detection range
+                
+                for (const asteroid of asteroids) {
+                    const distance = this.position.distanceTo(asteroid.position);
+                    if (distance < closestDistance) {
+                        closestAsteroid = asteroid;
+                        closestDistance = distance;
+                    }
+                }
+                
+                this.target = closestAsteroid;
+            }
+            
+            updateAI(deltaTime) {
+                if (this.target) {
+                    const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
+                    const targetAngle = Math.atan2(toTarget.x, toTarget.z);
+                    
+                    // Turn towards target
+                    let angleDiff = targetAngle - this.rotation;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    
+                    this.angularVelocity += Math.sign(angleDiff) * 0.1;
+                    
+                    // Thrust towards target if facing roughly the right direction
+                    if (Math.abs(angleDiff) < Math.PI / 4) {
+                        const thrustForce = new THREE.Vector3(
+                            Math.sin(this.rotation),
+                            0,
+                            Math.cos(this.rotation)
+                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime);
+                        
+                        this.velocity.add(thrustForce);
+                        this.thrust = true;
+                    } else {
+                        this.thrust = false;
+                    }
+                } else {
+                    // Random movement when no target
+                    if (Math.random() < 0.01) {
+                        this.angularVelocity += (Math.random() - 0.5) * 0.5;
+                    }
+                    if (Math.random() < 0.005) {
+                        const thrustForce = new THREE.Vector3(
+                            Math.sin(this.rotation),
+                            0,
+                            Math.cos(this.rotation)
+                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 0.5);
+                        
+                        this.velocity.add(thrustForce);
+                    }
+                }
+            }
+            
+            tryFire(elapsedTime) {
+                if (!this.target) return;
+                if (elapsedTime - this.lastFireTime < 0.5) return; // Fire rate limit
+                
+                const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
+                const targetAngle = Math.atan2(toTarget.x, toTarget.z);
+                let angleDiff = targetAngle - this.rotation;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                
+                // Only fire if roughly aimed at target
+                if (Math.abs(angleDiff) < Math.PI / 8) {
+                    this.fire();
+                    this.lastFireTime = elapsedTime;
+                }
+            }
+            
+            fire() {
+                const bulletStart = this.position.clone();
+                const direction = new THREE.Vector3(
+                    Math.sin(this.rotation),
+                    0,
+                    Math.cos(this.rotation)
+                );
+                
+                const bullet = new SpaceBullet(bulletStart, direction, this);
+                spaceBullets.push(bullet);
+                
+                console.log('🚀 Space ship fired!');
+            }
+        }
+        
+        class SpaceBullet {
+            constructor(position, direction, shooter) {
+                this.position = position.clone();
+                this.velocity = direction.clone().multiplyScalar(SPACE_BULLET_SPEED);
+                this.shooter = shooter;
+                this.life = 3.0; // Seconds
+                this.mesh = null;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const geometry = new THREE.SphereGeometry(0.08, 6, 6);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: 0xffff00,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            update(deltaTime) {
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                this.life -= deltaTime;
+                
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                }
+                
+                // Check collision with asteroids
+                for (const asteroid of asteroids) {
+                    const distance = this.position.distanceTo(asteroid.position);
+                    const hitRadius = asteroid.size === 'large' ? 2.0 : asteroid.size === 'medium' ? 1.2 : 0.7;
+                    
+                    if (distance < hitRadius) {
+                        asteroid.takeDamage();
+                        this.explode();
+                        return true; // Mark for removal
+                    }
+                }
+                
+                // Remove if life expired or out of bounds
+                if (this.life <= 0 || Math.abs(this.position.x) > SKY_RADIUS * 2) {
+                    this.destroy();
+                    return true; // Mark for removal
+                }
+                
+                return false;
+            }
+            
+            explode() {
+                // Create small explosion effect
+                createSpaceExplosion(this.position.clone());
+                this.destroy();
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+            }
+        }
+        
+        class ShootingStar {
+            constructor() {
+                // Start from random edge of sky area
+                const side = Math.floor(Math.random() * 4);
+                const skySize = SKY_RADIUS * 1.5;
+                
+                switch(side) {
+                    case 0: // Top
+                        this.position = new THREE.Vector3(
+                            (Math.random() - 0.5) * skySize,
+                            SKY_HEIGHT + 25 + Math.random() * 10,
+                            skySize
+                        );
+                        break;
+                    case 1: // Right
+                        this.position = new THREE.Vector3(
+                            skySize,
+                            SKY_HEIGHT + 25 + Math.random() * 10,
+                            (Math.random() - 0.5) * skySize
+                        );
+                        break;
+                    case 2: // Bottom
+                        this.position = new THREE.Vector3(
+                            (Math.random() - 0.5) * skySize,
+                            SKY_HEIGHT + 25 + Math.random() * 10,
+                            -skySize
+                        );
+                        break;
+                    case 3: // Left
+                        this.position = new THREE.Vector3(
+                            -skySize,
+                            SKY_HEIGHT + 25 + Math.random() * 10,
+                            (Math.random() - 0.5) * skySize
+                        );
+                        break;
+                }
+                
+                // Create velocity toward opposite side with downward angle
+                const targetX = (Math.random() - 0.5) * skySize;
+                const targetY = SKY_HEIGHT + Math.random() * 15;
+                const targetZ = (Math.random() - 0.5) * skySize;
+                
+                const direction = new THREE.Vector3(targetX, targetY, targetZ).sub(this.position);
+                direction.normalize();
+                this.velocity = direction.multiplyScalar(SHOOTING_STAR_SPEED);
+                
+                this.life = 4.0; // Seconds
+                this.brightness = 0.8 + Math.random() * 0.2;
+                this.mesh = null;
+                this.trailParticles = [];
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const starGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+                const starMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffffaa,
+                    transparent: true,
+                    opacity: this.brightness
+                });
+                this.mesh = new THREE.Mesh(starGeometry, starMaterial);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            update(deltaTime, elapsedTime) {
+                // Update position
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                this.life -= deltaTime;
+                
+                // Update mesh
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                    
+                    // Fade out as life decreases
+                    const lifeFactor = Math.max(0, this.life / 4.0);
+                    this.mesh.material.opacity = this.brightness * lifeFactor;
+                }
+                
+                // Create trail particles
+                this.createTrailParticle(elapsedTime);
+                
+                // Update trail particles
+                for (let i = this.trailParticles.length - 1; i >= 0; i--) {
+                    const particle = this.trailParticles[i];
+                    particle.life -= deltaTime;
+                    
+                    if (particle.life <= 0) {
+                        if (particle.mesh) {
+                            scene.remove(particle.mesh);
+                        }
+                        this.trailParticles.splice(i, 1);
+                    } else {
+                        // Fade trail particle
+                        if (particle.mesh) {
+                            particle.mesh.material.opacity = particle.life / 1.0;
+                        }
+                    }
+                }
+                
+                // Remove if life expired
+                return this.life <= 0;
+            }
+            
+            createTrailParticle(elapsedTime) {
+                // Create trail particle every few frames
+                if (Math.random() < 0.3) {
+                    const trailGeometry = new THREE.SphereGeometry(0.05, 4, 4);
+                    const trailMaterial = new THREE.MeshBasicMaterial({ 
+                        color: 0xffffff,
+                        transparent: true,
+                        opacity: 0.6
+                    });
+                    
+                    const trailMesh = new THREE.Mesh(trailGeometry, trailMaterial);
+                    trailMesh.position.copy(this.position);
+                    scene.add(trailMesh);
+                    
+                    this.trailParticles.push({
+                        mesh: trailMesh,
+                        life: 1.0 // Trail particles live for 1 second
+                    });
+                }
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+                
+                // Clean up trail particles
+                for (const particle of this.trailParticles) {
+                    if (particle.mesh) {
+                        scene.remove(particle.mesh);
+                    }
+                }
+                this.trailParticles = [];
+            }
+        }
+        
+        // --- Tron Light Cycle Classes ---
+        class LightCycle {
+            constructor(teamColor, startPosition) {
+                this.position = startPosition || new THREE.Vector3(
+                    CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE),
+                    0,
+                    CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE)
+                );
+                this.velocity = new THREE.Vector3();
+                this.direction = Math.random() * Math.PI * 2;
+                this.speed = CYCLE_SPEED;
+                this.teamColor = teamColor || 0x00ffff;
+                this.mesh = null;
+                this.lastTrailTime = 0;
+                this.nextTurnTime = Date.now() + (3000 + Math.random() * 7000); // Random turn interval
+                this.isAlive = true;
+                this.trailSegments = [];
+                
+                this.createMesh();
+                this.setInitialVelocity();
+            }
+            
+            createMesh() {
+                const cycleGroup = new THREE.Group();
+                
+                // Main body (sleek rectangular chassis)
+                const bodyGeometry = new THREE.BoxGeometry(0.6, 0.3, 1.8);
+                const bodyMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.teamColor,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.15;
+                cycleGroup.add(body);
+                
+                // Light strips (glowing edges)
+                const stripGeometry = new THREE.BoxGeometry(0.65, 0.05, 1.85);
+                const stripMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.teamColor,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                
+                // Top strip
+                const topStrip = new THREE.Mesh(stripGeometry, stripMaterial);
+                topStrip.position.y = 0.35;
+                cycleGroup.add(topStrip);
+                
+                // Bottom strip
+                const bottomStrip = new THREE.Mesh(stripGeometry, stripMaterial);
+                bottomStrip.position.y = 0.05;
+                cycleGroup.add(bottomStrip);
+                
+                // Wheels (wireframe cylinders)
+                const wheelGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
+                const wheelMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.teamColor,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                
+                const frontWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                frontWheel.position.set(0, 0.2, 0.6);
+                frontWheel.rotation.z = Math.PI / 2;
+                cycleGroup.add(frontWheel);
+                
+                const backWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                backWheel.position.set(0, 0.2, -0.6);
+                backWheel.rotation.z = Math.PI / 2;
+                cycleGroup.add(backWheel);
+                
+                this.mesh = cycleGroup;
+                this.mesh.position.copy(this.position);
+                scene.add(cycleGroup);
+            }
+            
+            setInitialVelocity() {
+                this.velocity.set(
+                    Math.cos(this.direction) * this.speed,
+                    0,
+                    Math.sin(this.direction) * this.speed
+                );
+            }
+            
+            update(deltaTime, elapsedTime) {
+                if (!this.isAlive) return;
+                
+                // Check if it's time for a random turn
+                if (Date.now() > this.nextTurnTime) {
+                    this.makeRandomTurn();
+                    this.nextTurnTime = Date.now() + (2000 + Math.random() * 8000);
+                }
+                
+                // Update position
+                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                
+                // Keep within racing boundaries and avoid user area
+                this.checkBoundaries();
+                
+                // Update mesh
+                if (this.mesh) {
+                    this.mesh.position.copy(this.position);
+                    this.mesh.rotation.y = this.direction;
+                }
+                
+                // Create light trail
+                this.updateTrail(elapsedTime);
+            }
+            
+            makeRandomTurn() {
+                // Choose a new direction (90-degree turns like classic Tron)
+                const turnOptions = [
+                    this.direction + Math.PI / 2,   // Right turn
+                    this.direction - Math.PI / 2,   // Left turn
+                    this.direction                  // Continue straight (less likely)
+                ];
+                
+                // Weight towards turning for more interesting paths
+                const randomChoice = Math.random();
+                if (randomChoice < 0.4) {
+                    this.direction = turnOptions[0]; // Right
+                } else if (randomChoice < 0.8) {
+                    this.direction = turnOptions[1]; // Left
+                } else {
+                    this.direction = turnOptions[2]; // Straight
+                }
+                
+                // Update velocity
+                this.setInitialVelocity();
+                
+                console.log('🏍️ Light cycle turned!');
+            }
+            
+            checkBoundaries() {
+                const distanceFromCenter = Math.sqrt(this.position.x * this.position.x + this.position.z * this.position.z);
+                
+                // If too close to user, turn away
+                if (distanceFromCenter < CYCLE_MIN_DISTANCE) {
+                    const awayFromCenter = Math.atan2(this.position.z, this.position.x);
+                    this.direction = awayFromCenter;
+                    this.setInitialVelocity();
+                }
+                
+                // If too far out, turn toward center
+                if (distanceFromCenter > CYCLE_MAX_DISTANCE) {
+                    const towardCenter = Math.atan2(-this.position.z, -this.position.x);
+                    this.direction = towardCenter + (Math.random() - 0.5) * Math.PI / 2; // Add some randomness
+                    this.setInitialVelocity();
+                }
+            }
+            
+            updateTrail(elapsedTime) {
+                // Add new trail segment if enough distance has been covered
+                if (this.trailSegments.length === 0 || 
+                    this.position.distanceTo(this.trailSegments[this.trailSegments.length - 1].position) > TRAIL_SEGMENT_LENGTH) {
+                    
+                    const trailSegment = new LightTrail(this.position.clone(), this.teamColor, elapsedTime);
+                    this.trailSegments.push(trailSegment);
+                    lightTrails.push(trailSegment);
+                }
+                
+                // Clean up old trail segments
+                this.trailSegments = this.trailSegments.filter(segment => segment.isAlive);
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+                this.isAlive = false;
+                console.log('💥 Light cycle destroyed!');
+            }
+        }
+        
+        class LightTrail {
+            constructor(position, color, creationTime) {
+                this.position = position.clone();
+                this.color = color;
+                this.creationTime = creationTime;
+                this.isAlive = true;
+                this.mesh = null;
+                
+                this.createMesh();
+            }
+            
+            createMesh() {
+                const trailGeometry = new THREE.BoxGeometry(0.8, 1.5, 0.8);
+                const trailMaterial = new THREE.MeshBasicMaterial({ 
+                    color: this.color,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                this.mesh = new THREE.Mesh(trailGeometry, trailMaterial);
+                this.mesh.position.copy(this.position);
+                scene.add(this.mesh);
+            }
+            
+            update(elapsedTime) {
+                // Fade out over time
+                const age = elapsedTime - this.creationTime;
+                const fadeProgress = age / TRAIL_LIFETIME;
+                
+                if (fadeProgress >= 1.0) {
+                    this.destroy();
+                    return;
+                }
+                
+                // Update opacity
+                if (this.mesh) {
+                    this.mesh.material.opacity = 0.8 * (1 - fadeProgress);
+                }
+            }
+            
+            destroy() {
+                if (this.mesh) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
+                this.isAlive = false;
+            }
+        }
+        
+        // --- Predator Class ---
+        class Predator {
+            constructor(position, color) {
+                this.position = position || new THREE.Vector3();
+                this.velocity = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1);
+                this.velocity.setLength(Math.random() * 0.3 + 0.2);
+                this.acceleration = new THREE.Vector3();
+                this.maxForce = 0.05;
+                this.maxSpeed = 0.15; // Slightly faster than boids
+                this.huntRadius = 4.0;
+                this.color = color || new THREE.Color(0xff0000);
+                this.isGrabbed = false;
+            }
+            
+            update() {
+                if (this.isGrabbed) return;
+                
+                this.position.add(this.velocity);
+                this.velocity.add(this.acceleration);
+                this.velocity.clampLength(0, this.maxSpeed);
+                this.acceleration.multiplyScalar(0);
+            }
+            
+            applyForce(force) {
+                if (!this.isGrabbed) {
+                    this.acceleration.add(force);
+                }
+            }
+            
+            hunt(boids) {
+                if (!boids || !Array.isArray(boids)) {
+                    return;
+                }
+                
+                let closest = null;
+                let closestDist = Infinity;
+                
+                for (let boid of boids) {
+                    if (!boid || boid.isGrabbed) continue;
+                    let d = this.position.distanceTo(boid.position);
+                    if (d < this.huntRadius && d < closestDist) {
+                        closest = boid;
+                        closestDist = d;
+                    }
+                }
+                
+                if (closest) {
+                    let huntForce = this.seek(closest.position);
+                    huntForce.multiplyScalar(2.0); // Strong hunting drive
+                    this.applyForce(huntForce);
+                }
+            }
+            
+            seek(target) {
+                let desired = new THREE.Vector3().subVectors(target, this.position);
+                desired.normalize();
+                desired.multiplyScalar(this.maxSpeed);
+                let steer = desired.sub(this.velocity);
+                steer.clampLength(0, this.maxForce);
+                return steer;
+            }
+            
+            checkBounds() {
+                if (this.isGrabbed) return;
+                
+                const halfBound = boundSize / 2;
+                const turnFactor = 0.7;
+                
+                if (this.position.x > halfBound) this.velocity.x -= turnFactor;
+                if (this.position.x < -halfBound) this.velocity.x += turnFactor;
+                if (this.position.y > boundSize) this.velocity.y -= turnFactor;
+                if (this.position.y < 0.1) this.velocity.y += turnFactor;
+                if (this.position.z > halfBound) this.velocity.z -= turnFactor;
+                if (this.position.z < -halfBound) this.velocity.z += turnFactor;
+            }
+        }
+        
+        // --- Boid Class ---
+        class Boid {
+            constructor(position) {
+                this.position = position || new THREE.Vector3(
+                    Math.random() * boundSize - boundSize / 2,
+                    Math.random() * (boundSize / 2) + 1,
+                    Math.random() * boundSize - boundSize / 2
+                );
+                this.velocity = new THREE.Vector3(
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1
+                );
+                this.velocity.setLength(Math.random() * 0.5 + 0.5);
+                this.acceleration = new THREE.Vector3();
+                this.maxForce = 0.03;
+                this.maxSpeed = 0.1;
+                this.isGrabbed = false;
+                this.isBeingTossed = false;
+                this.tossStartTime = 0;
+                this.tossVelocity = new THREE.Vector3();
+                this.originalVelocity = new THREE.Vector3();
+            }
+            
+            update() {
+                if (this.isGrabbed) return;
+                
+                if (this.isBeingTossed) {
+                    this.handleTossedMovement();
+                } else {
+                    this.position.add(this.velocity);
+                    this.velocity.add(this.acceleration);
+                    this.velocity.clampLength(0, this.maxSpeed);
+                    this.acceleration.multiplyScalar(0);
+                }
+            }
+            
+            handleTossedMovement() {
+                const tossTime = clock.getElapsedTime() - this.tossStartTime;
+                const transitionTime = 1.0; // Time to transition from toss to flight
+                
+                if (tossTime < transitionTime) {
+                    // Newtonian trajectory with gravity
+                    const gravity = new THREE.Vector3(0, -9.8, 0);
+                    this.position.add(this.tossVelocity.clone().multiplyScalar(0.016)); // ~60fps
+                    this.tossVelocity.add(gravity.clone().multiplyScalar(0.016));
+                    
+                    // Gradually blend back to boid behavior
+                    const blendFactor = tossTime / transitionTime;
+                    this.velocity.lerpVectors(this.tossVelocity, this.originalVelocity, blendFactor);
+                } else {
+                    // Return to normal boid behavior
+                    this.isBeingTossed = false;
+                    this.velocity.copy(this.originalVelocity);
+                }
+            }
+            
+            applyForce(force) {
+                if (!this.isGrabbed && !this.isBeingTossed) {
+                    this.acceleration.add(force);
+                }
+            }
+            
+            // --- MODIFIED: flock method now includes obstacle avoidance and predator fleeing ---
+            flock(boids, hands, obstacles, predators) {
+                let fleeForce = this.fleeFromHands(hands);
+                let predatorFleeForce = this.fleeFromPredators(predators);
+                let avoidForce = this.avoid(obstacles);
+                let separation = this.separate(boids);
+                let alignment = this.align(boids);
+                let cohesion = this.cohere(boids);
+
+                // Weight forces
+                fleeForce.multiplyScalar(5.0);
+                predatorFleeForce.multiplyScalar(8.0); // Very strong predator avoidance
+                avoidForce.multiplyScalar(3.0);
+                separation.multiplyScalar(1.5);
+                alignment.multiplyScalar(1.0);
+                cohesion.multiplyScalar(1.0);
+                
+                this.applyForce(fleeForce);
+                this.applyForce(predatorFleeForce);
+                this.applyForce(avoidForce);
+                this.applyForce(separation);
+                this.applyForce(alignment);
+                this.applyForce(cohesion);
+            }
+            
+            // --- NEW: Steer away from obstacles ---
+            avoid(obstacles) {
+                let steer = new THREE.Vector3();
+                for (let obstacle of obstacles) {
+                    let d = this.position.distanceTo(obstacle.position);
+                    if (d < obstacle.radius) {
+                        let diff = new THREE.Vector3().subVectors(this.position, obstacle.position);
+                        diff.normalize();
+                        diff.divideScalar(d); // Weight by distance
+                        steer.add(diff);
+                    }
+                }
+                if (steer.length() > 0) {
+                    steer.normalize();
+                    steer.multiplyScalar(this.maxSpeed);
+                    steer.sub(this.velocity);
+                    steer.clampLength(0, this.maxForce);
+                }
+                return steer;
+            }
+
+            fleeFromHands(hands) {
+                let fleeForce = new THREE.Vector3();
+                for (const hand of hands) {
+                    if (hand.userData.isReady && !hand.userData.isGrabbingBoid) {
+                        fleeForce.add(this.flee(hand.userData.tipPositions.MIDDLE));
+                    }
+                }
+                return fleeForce;
+            }
+            
+            fleeFromPredators(predators) {
+                let fleeForce = new THREE.Vector3();
+                if (!predators || !Array.isArray(predators)) {
+                    return fleeForce;
+                }
+                for (const predator of predators) {
+                    if (!predator || predator.isGrabbed) continue;
+                    let d = this.position.distanceTo(predator.position);
+                    if (d < 3.0) { // Flee radius from predators
+                        let flee = this.flee(predator.position);
+                        flee.multiplyScalar(3.0); // Strong flee response
+                        fleeForce.add(flee);
+                    }
+                }
+                return fleeForce;
+            }
+            separate(boids) {
+                let desiredSeparation = 0.8;
+                let steer = new THREE.Vector3();
+                let count = 0;
+                
+                for (let other of boids) {
+                    if (other.isGrabbed) continue;
+                    let d = this.position.distanceTo(other.position);
+                    if ((d > 0) && (d < desiredSeparation)) {
+                        let diff = new THREE.Vector3().subVectors(this.position, other.position);
+                        diff.normalize();
+                        diff.divideScalar(d);
+                        steer.add(diff);
+                        count++;
+                    }
+                }
+                
+                if (count > 0) {
+                    steer.divideScalar(count);
+                    steer.normalize();
+                    steer.multiplyScalar(this.maxSpeed);
+                    steer.sub(this.velocity);
+                    steer.clampLength(0, this.maxForce);
+                }
+                return steer;
+            }
+            align(boids) {
+                let neighborDist = 2.5;
+                let sum = new THREE.Vector3();
+                let count = 0;
+                
+                for (let other of boids) {
+                    if (other.isGrabbed) continue;
+                    let d = this.position.distanceTo(other.position);
+                    if ((d > 0) && (d < neighborDist)) {
+                        sum.add(other.velocity);
+                        count++;
+                    }
+                }
+                
+                if (count > 0) {
+                    sum.divideScalar(count);
+                    sum.normalize();
+                    sum.multiplyScalar(this.maxSpeed);
+                    let steer = sum.sub(this.velocity);
+                    steer.clampLength(0, this.maxForce);
+                    return steer;
+                } else {
+                    return new THREE.Vector3();
+                }
+            }
+            cohere(boids) {
+                let neighborDist = 3;
+                let sum = new THREE.Vector3();
+                let count = 0;
+                
+                for (let other of boids) {
+                    if (other.isGrabbed) continue;
+                    let d = this.position.distanceTo(other.position);
+                    if ((d > 0) && (d < neighborDist)) {
+                        sum.add(other.position);
+                        count++;
+                    }
+                }
+                
+                if (count > 0) {
+                    sum.divideScalar(count);
+                    return this.seek(sum);
+                } else {
+                    return new THREE.Vector3();
+                }
+            }
+            seek(target) {
+                let desired = new THREE.Vector3().subVectors(target, this.position);
+                desired.normalize();
+                desired.multiplyScalar(this.maxSpeed);
+                let steer = desired.sub(this.velocity);
+                steer.clampLength(0, this.maxForce);
+                return steer;
+            }
+            flee(target) {
+                const fleeRadius = 1.5;
+                let steer = new THREE.Vector3();
+                let d = this.position.distanceTo(target);
+                if (d < fleeRadius) {
+                    let desired = new THREE.Vector3().subVectors(this.position, target);
+                    desired.normalize();
+                    desired.multiplyScalar(this.maxSpeed);
+                    steer = desired.sub(this.velocity);
+                    steer.clampLength(0, this.maxForce * 2.0);
+                }
+                return steer;
+            }
+            checkBounds() {
+                if (this.isGrabbed) return;
+                
+                const halfBound = boundSize / 2;
+                const turnFactor = 0.5;
+                
+                if (this.position.x > halfBound) this.velocity.x -= turnFactor;
+                if (this.position.x < -halfBound) this.velocity.x += turnFactor;
+                if (this.position.y > boundSize) this.velocity.y -= turnFactor;
+                if (this.position.y < 0.1) this.velocity.y += turnFactor;
+                if (this.position.z > halfBound) this.velocity.z -= turnFactor;
+                if (this.position.z < -halfBound) this.velocity.z += turnFactor;
+            }
+        }
+
+        init();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x101020);
+            clock = new THREE.Clock();
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(8, 1.6, 8); // Move user away from central tree
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            
+            // Set VR reference space with offset to spawn user away from trees
+            renderer.xr.setReferenceSpaceType('local');
+            
+            document.body.appendChild(renderer.domElement);
+            
+            // Check WebXR support
+            if ('xr' in navigator) {
+                navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+                    if (supported) {
+                        document.body.appendChild(VRButton.createButton(renderer));
+                    } else {
+                        console.log('WebXR VR not supported on this device');
+                        addFallbackControls();
+                    }
+                }).catch((err) => {
+                    console.log('WebXR error:', err);
+                    addFallbackControls();
+                });
+            } else {
+                console.log('WebXR not available');
+                addFallbackControls();
+            }
+
+            const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x444444);
+            scene.add(gridHelper);
+            
+            // Create multiple Tron-inspired trees
+            createTronTrees();
+            
+            function createTronTrees() {
+                const treeConfigs = [
+                    // Central tree - tall crystalline structure
+                    {
+                        position: new THREE.Vector3(0, 0, 0),
+                        trunkGeometry: new THREE.CylinderGeometry(0.2, 0.4, 5, 6),
+                        canopyGeometry: new THREE.ConeGeometry(3, 4, 8),
+                        trunkColor: 0x00ffff,
+                        canopyColor: 0x00ff88,
+                        lightColor: 0x00ffaa,
+                        lightIntensity: 6,
+                        trunkHeight: 2.5,
+                        canopyHeight: 6
+                    },
+                    // Pyramid tree - left side
+                    {
+                        position: new THREE.Vector3(-8, 0, -3),
+                        trunkGeometry: new THREE.BoxGeometry(0.6, 3, 0.6),
+                        canopyGeometry: new THREE.TetrahedronGeometry(2.5, 1),
+                        trunkColor: 0xff00ff,
+                        canopyColor: 0xff0088,
+                        lightColor: 0xff00aa,
+                        lightIntensity: 4,
+                        trunkHeight: 1.5,
+                        canopyHeight: 4
+                    },
+                    // Octahedron tree - right side
+                    {
+                        position: new THREE.Vector3(6, 0, -6),
+                        trunkGeometry: new THREE.CylinderGeometry(0.15, 0.25, 4, 8),
+                        canopyGeometry: new THREE.OctahedronGeometry(2.2, 1),
+                        trunkColor: 0x0088ff,
+                        canopyColor: 0x0066ff,
+                        lightColor: 0x0088ff,
+                        lightIntensity: 4,
+                        trunkHeight: 2,
+                        canopyHeight: 4.5
+                    },
+                    // Dodecahedron tree - back left
+                    {
+                        position: new THREE.Vector3(-4, 0, 8),
+                        trunkGeometry: new THREE.CylinderGeometry(0.3, 0.3, 2.5, 12),
+                        canopyGeometry: new THREE.DodecahedronGeometry(2, 0),
+                        trunkColor: 0xffaa00,
+                        canopyColor: 0xff8800,
+                        lightColor: 0xffaa00,
+                        lightIntensity: 3,
+                        trunkHeight: 1.25,
+                        canopyHeight: 3.5
+                    },
+                    // Icosahedron tree - back right  
+                    {
+                        position: new THREE.Vector3(3, 0, 6),
+                        trunkGeometry: new THREE.CylinderGeometry(0.1, 0.2, 3.5, 6),
+                        canopyGeometry: new THREE.IcosahedronGeometry(1.8, 1),
+                        trunkColor: 0x88ff00,
+                        canopyColor: 0x66ff00,
+                        lightColor: 0x88ff00,
+                        lightIntensity: 3,
+                        trunkHeight: 1.75,
+                        canopyHeight: 3.5
+                    }
+                ];
+                
+                treeConfigs.forEach(config => {
+                    const tree = new THREE.Group();
+                    tree.position.copy(config.position);
+                    
+                    // Create trunk
+                    const trunkMat = new THREE.MeshBasicMaterial({ 
+                        color: config.trunkColor, 
+                        transparent: true, 
+                        opacity: 0.3 
+                    });
+                    const trunk = new THREE.Mesh(config.trunkGeometry, trunkMat);
+                    trunk.position.y = config.trunkHeight;
+                    tree.add(trunk);
+                    
+                    // Create canopy
+                    const canopyMat = new THREE.MeshBasicMaterial({ 
+                        color: config.canopyColor, 
+                        transparent: true, 
+                        opacity: 0.25 
+                    });
+                    const canopy = new THREE.Mesh(config.canopyGeometry, canopyMat);
+                    canopy.position.y = config.canopyHeight;
+                    tree.add(canopy);
+                    
+                    // Create wireframe overlays for Tron effect
+                    const wireframeMat = new THREE.MeshBasicMaterial({ 
+                        color: 0xffffff, 
+                        wireframe: true,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    const trunkWireframe = new THREE.Mesh(config.trunkGeometry, wireframeMat);
+                    trunkWireframe.position.copy(trunk.position);
+                    tree.add(trunkWireframe);
+                    
+                    const canopyWireframe = new THREE.Mesh(config.canopyGeometry, wireframeMat);
+                    canopyWireframe.position.copy(canopy.position);
+                    tree.add(canopyWireframe);
+                    
+                    // Add glowing light
+                    const treeLight = new THREE.PointLight(config.lightColor, config.lightIntensity, 12);
+                    treeLight.position.y = config.canopyHeight;
+                    tree.add(treeLight);
+                    
+                    // Add to obstacles array
+                    obstacles.push(
+                        { position: new THREE.Vector3().copy(config.position).add(new THREE.Vector3(0, config.trunkHeight, 0)), radius: 0.5 },
+                        { position: new THREE.Vector3().copy(config.position).add(new THREE.Vector3(0, config.canopyHeight, 0)), radius: 2.5 }
+                    );
+                    
+                    scene.add(tree);
+                });
+                
+                // Create ornamental fountain
+                createFountain();
+                
+                // Create Game of Life monolith
+                createGameOfLifeMonolith();
+                
+                // Initialize Battle Zone tank battle
+                initializeTankBattle();
+                
+                // Initialize sky battle and starfield
+                initializeSkyBattle();
+                
+                // Initialize Tron light cycles
+                initializeLightCycles();
+            }
+            
+            
+            function createFountain() {
+                const fountain = new THREE.Group();
+                fountain.position.set(-2, 0, 2); // Position near user spawn
+                
+                // Base pedestal
+                const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 0.5, 12);
+                const baseMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x004466, 
+                    transparent: true, 
+                    opacity: 0.3 
+                });
+                const base = new THREE.Mesh(baseGeometry, baseMaterial);
+                base.position.y = 0.25;
+                fountain.add(base);
+                
+                // Base wireframe
+                const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
+                    color: 0x00aaff, 
+                    wireframe: true, 
+                    transparent: true, 
+                    opacity: 0.8 
+                }));
+                baseWireframe.position.copy(base.position);
+                fountain.add(baseWireframe);
+                
+                // Central pillar
+                const pillarGeometry = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
+                const pillarMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x0066aa, 
+                    transparent: true, 
+                    opacity: 0.4 
+                });
+                const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+                pillar.position.y = 1.5;
+                fountain.add(pillar);
+                
+                // Pillar wireframe
+                const pillarWireframe = new THREE.Mesh(pillarGeometry, new THREE.MeshBasicMaterial({ 
+                    color: 0x00ddff, 
+                    wireframe: true, 
+                    transparent: true, 
+                    opacity: 0.9 
+                }));
+                pillarWireframe.position.copy(pillar.position);
+                fountain.add(pillarWireframe);
+                
+                // Ornamental top crystal
+                const crystalGeometry = new THREE.OctahedronGeometry(0.4, 1);
+                const crystalMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ffff, 
+                    transparent: true, 
+                    opacity: 0.6 
+                });
+                const crystal = new THREE.Mesh(crystalGeometry, crystalMaterial);
+                crystal.position.y = 2.8;
+                fountain.add(crystal);
+                
+                // Crystal wireframe
+                const crystalWireframe = new THREE.Mesh(crystalGeometry, new THREE.MeshBasicMaterial({ 
+                    color: 0xffffff, 
+                    wireframe: true 
+                }));
+                crystalWireframe.position.copy(crystal.position);
+                fountain.add(crystalWireframe);
+                
+                // Glowing light
+                const fountainLight = new THREE.PointLight(0x00ccff, 8, 20);
+                fountainLight.position.y = 2.8;
+                fountain.add(fountainLight);
+                
+                // Add floating ring elements
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    const ringGeometry = new THREE.TorusGeometry(0.15, 0.03, 6, 12);
+                    const ringMaterial = new THREE.MeshBasicMaterial({ 
+                        color: 0x0088ff, 
+                        transparent: true, 
+                        opacity: 0.7 
+                    });
+                    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                    ring.position.set(
+                        Math.cos(angle) * 1.2,
+                        0.8 + Math.sin(i) * 0.2,
+                        Math.sin(angle) * 1.2
+                    );
+                    ring.rotation.x = Math.PI / 2 + Math.sin(i) * 0.3;
+                    fountain.add(ring);
+                }
+                
+                scene.add(fountain);
+                
+                // Store fountain position for voxel spawning
+                window.fountainPosition = new THREE.Vector3(-2, 2.8, 2);
+            }
+            
+            function createGameOfLifeMonolith() {
+                const monolith = new THREE.Group();
+                monolith.position.set(10, 0, -5); // Position away from other structures
+                
+                // Main monolith structure - tall and imposing
+                const monolithGeometry = new THREE.BoxGeometry(0.8, 12, 3);
+                const monolithMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x001133, 
+                    transparent: true, 
+                    opacity: 0.4 
+                });
+                const monolithCore = new THREE.Mesh(monolithGeometry, monolithMaterial);
+                monolithCore.position.y = 6;
+                monolith.add(monolithCore);
+                
+                // Monolith wireframe
+                const monolithWireframe = new THREE.Mesh(monolithGeometry, new THREE.MeshBasicMaterial({ 
+                    color: 0x0055aa, 
+                    wireframe: true, 
+                    transparent: true, 
+                    opacity: 0.6 
+                }));
+                monolithWireframe.position.copy(monolithCore.position);
+                monolith.add(monolithWireframe);
+                
+                // Base platform
+                const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 1, 8);
+                const baseMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x002244, 
+                    transparent: true, 
+                    opacity: 0.5 
+                });
+                const base = new THREE.Mesh(baseGeometry, baseMaterial);
+                base.position.y = 0.5;
+                monolith.add(base);
+                
+                // Base wireframe
+                const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
+                    color: 0x00aaff, 
+                    wireframe: true, 
+                    transparent: true, 
+                    opacity: 0.8 
+                }));
+                baseWireframe.position.copy(base.position);
+                monolith.add(baseWireframe);
+                
+                // Create light panel grid
+                createLightPanelGrid(monolith);
+                
+                // Add ambient lighting
+                const monolithLight = new THREE.PointLight(0x0066ff, 6, 25);
+                monolithLight.position.set(0, 8, 2);
+                monolith.add(monolithLight);
+                
+                scene.add(monolith);
+                
+                // Initialize Game of Life grid
+                initializeGameOfLife();
+            }
+            
+            function createLightPanelGrid(monolith) {
+                const panelSize = 0.12;
+                const panelSpacing = 0.15;
+                const gridWidth = GRID_SIZE_X * panelSpacing;
+                const gridHeight = GRID_SIZE_Y * panelSpacing;
+                
+                // Position grid to cover entire monolith from top to floor
+                const gridStartX = -gridWidth / 2 + panelSpacing / 2;
+                const gridStartY = 12 - panelSpacing / 2; // Start from very top
+                const gridZ = 1.6; // Just in front of monolith face
+                
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    monolithPanels[x] = [];
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        // Create panel geometry
+                        const panelGeometry = new THREE.PlaneGeometry(panelSize, panelSize);
+                        const panelMaterial = new THREE.MeshStandardMaterial({ 
+                            color: 0x001122,
+                            emissive: 0x000000,
+                            transparent: true,
+                            opacity: 0.3,
+                            side: THREE.DoubleSide
+                        });
+                        
+                        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+                        panel.position.set(
+                            gridStartX + x * panelSpacing,
+                            gridStartY - y * panelSpacing,
+                            gridZ
+                        );
+                        
+                        // Store grid coordinates in userData
+                        panel.userData = { gridX: x, gridY: y, isAlive: false };
+                        
+                        monolith.add(panel);
+                        monolithPanels[x][y] = panel;
+                        
+                        // Add subtle wireframe border
+                        const borderGeometry = new THREE.EdgesGeometry(panelGeometry);
+                        const borderMaterial = new THREE.LineBasicMaterial({ 
+                            color: 0x004466, 
+                            transparent: true, 
+                            opacity: 0.5 
+                        });
+                        const border = new THREE.LineSegments(borderGeometry, borderMaterial);
+                        border.position.copy(panel.position);
+                        border.position.z += 0.001; // Slightly in front
+                        monolith.add(border);
+                    }
+                }
+            }
+
+            // --- FOUNTAIN VOXEL SYSTEM ---
+            const voxelSize = 0.08;
+            const boidGeometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+            const interactiveMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, 
+                emissive: 0x002244,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            // Create fountain voxel mesh
+            fountainVoxelsMesh = new THREE.InstancedMesh(boidGeometry, interactiveMaterial, fountainVoxelCount);
+            fountainVoxelsMesh.name = "fountain_voxels";
+            scene.add(fountainVoxelsMesh);
+            
+            // Initialize empty fountain voxels array
+            for (let i = 0; i < fountainVoxelCount; i++) {
+                fountainVoxels.push(null);
+            }
+            
+            // Initialize spawn timing and start fountain immediately
+            window.lastFountainSpawn = 0;
+            
+            // Pre-spawn some initial voxels for immediate visual effect
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => spawnFountainVoxel(), i * 100);
+            }
+            
+            // --- REVISED: Create two proxy meshes for holding, one for each hand ---
+            heldVoxelMesh1 = new THREE.Mesh(boidGeometry, interactiveMaterial.clone());
+            heldVoxelMesh1.visible = false;
+            heldVoxelMesh1.position.set(0, -1000, 0); // Hide far away initially
+            scene.add(heldVoxelMesh1);
+            heldVoxelMesh2 = new THREE.Mesh(boidGeometry, interactiveMaterial.clone());
+            heldVoxelMesh2.visible = false;
+            heldVoxelMesh2.position.set(0, -1000, 0); // Hide far away initially
+            scene.add(heldVoxelMesh2);
+
+            const aliveVoxelsMesh = new THREE.InstancedMesh(boidGeometry, new THREE.MeshNormalMaterial(), 500);
+            aliveVoxelsMesh.name = "alive_voxels";
+            scene.add(aliveVoxelsMesh);
+            
+            // Create predator mesh
+            const predatorMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, emissive: 0x440000 });
+            const predatorMesh = new THREE.InstancedMesh(boidGeometry, predatorMaterial, 100);
+            predatorMesh.name = "predators";
+            scene.add(predatorMesh);
+            
+            for (let i = 0; i < initialBoidCount; i++) { boids.push(new Boid()); }
+            
+            // --- REVISED: Hand Tracking Setup ---
+            const handModelFactory = new XRHandModelFactory();
+            hand1 = renderer.xr.getHand(0);
+            hand2 = renderer.xr.getHand(1);
+            [hand1, hand2].forEach(hand => {
+                hand.userData.isReady = false;
+                hand.userData.isPinching = false;
+                hand.userData.heldVoxelIndex = null;
+                hand.userData.heldBoidIndex = null;
+                hand.userData.isGrabbingBoid = false;
+                hand.userData.holdStartTime = 0;
+                hand.userData.lastPosition = new THREE.Vector3();
+                hand.userData.velocity = new THREE.Vector3();
+                hand.userData.shakeIntensity = 0;
+                hand.userData.shakeHistory = [];
+                hand.userData.isFist = false;
+                hand.userData.lastFistState = false;
+                hand.userData.punchVelocity = 0;
+                hand.userData.tipPositions = { THUMB: new THREE.Vector3(), INDEX: new THREE.Vector3(), MIDDLE: new THREE.Vector3() };
+                hand.add(handModelFactory.createHandModel(hand, "mesh"));
+                scene.add(hand);
+            });
+            
+            // No controller setup needed for hand-only experience
+
+            // Add VR session start/end handlers to control user position
+            renderer.xr.addEventListener('sessionstart', () => {
+                // Hide UI elements in VR
+                const infoDiv = document.getElementById('info');
+                if (infoDiv) infoDiv.style.display = 'none';
+                
+                // Offset the user position when entering VR
+                const offsetPosition = new THREE.Vector3(8, 0, 8);
+                renderer.xr.getCamera().position.copy(offsetPosition);
+                scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
+            });
+            
+            renderer.xr.addEventListener('sessionend', () => {
+                // Show UI elements when exiting VR
+                const infoDiv = document.getElementById('info');
+                if (infoDiv) infoDiv.style.display = 'block';
+                
+                // Reset scene position when exiting VR
+                scene.position.set(0, 0, 0);
+            });
+
+            renderer.setAnimationLoop(() => { update(); render(); });
+            window.addEventListener('resize', onWindowResize, false);
+        }
+        
+        function initializeTankBattle() {
+            console.log('🎮 Initializing Battle Zone tank battle...');
+            
+            // Create tanks for both teams
+            for (let i = 0; i < TANK_COUNT; i++) {
+                const team = i % 2; // Alternate teams
+                const angle = (i / TANK_COUNT) * Math.PI * 2;
+                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
+                
+                const position = new THREE.Vector3(
+                    Math.cos(angle) * distance,
+                    0,
+                    Math.sin(angle) * distance
+                );
+                
+                const tank = new BattleTank(position, team);
+                tanks.push(tank);
+            }
+            
+            console.log(`✅ Created ${TANK_COUNT} tanks for battle!`);
+        }
+        
+        function createProjectileExplosion(position) {
+            try {
+                if (!position) return;
+                
+                const particleCount = 15;
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = {
+                        position: position.clone(),
+                        velocity: new THREE.Vector3(
+                            (Math.random() - 0.5) * 4,
+                            Math.random() * 3,
+                            (Math.random() - 0.5) * 4
+                        ),
+                        life: 1.0,
+                        color: new THREE.Color().setHSL(Math.random() * 0.1 + 0.05, 1, 0.7)
+                    };
+                    particles.push(particle);
+                }
+                
+                console.log('💥 Projectile explosion!');
+            } catch (error) {
+                console.warn('Projectile explosion error:', error);
+            }
+        }
+        
+        function updateTankBattle(deltaTime, elapsedTime) {
+            try {
+                // Update tanks
+                for (let i = tanks.length - 1; i >= 0; i--) {
+                    const tank = tanks[i];
+                    if (tank.health <= 0) {
+                        // Respawn tank after delay
+                        setTimeout(() => {
+                            if (tanks.length < TANK_COUNT) {
+                                const team = Math.floor(Math.random() * 2);
+                                const angle = Math.random() * Math.PI * 2;
+                                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
+                                
+                                const position = new THREE.Vector3(
+                                    Math.cos(angle) * distance,
+                                    0,
+                                    Math.sin(angle) * distance
+                                );
+                                
+                                const newTank = new BattleTank(position, team);
+                                tanks.push(newTank);
+                                console.log('🚗 New tank deployed!');
+                            }
+                        }, 5000 + Math.random() * 5000); // 5-10 second respawn delay
+                        
+                        tanks.splice(i, 1);
+                    } else {
+                        tank.update(deltaTime, elapsedTime);
+                    }
+                }
+                
+                // Update projectiles
+                for (let i = projectiles.length - 1; i >= 0; i--) {
+                    const projectile = projectiles[i];
+                    if (projectile.update(deltaTime)) {
+                        projectiles.splice(i, 1);
+                    }
+                }
+            } catch (error) {
+                console.warn('Tank battle update error:', error);
+            }
+        }
+        
+        function initializeSkyBattle() {
+            console.log('✨ Initializing sky starfield and Asteroids battle...');
+            
+            // Create starfield
+            for (let i = 0; i < STAR_COUNT; i++) {
+                stars.push(new Star());
+            }
+            
+            // Create initial asteroids
+            for (let i = 0; i < ASTEROID_COUNT; i++) {
+                asteroids.push(new Asteroid());
+            }
+            
+            // Create space ships
+            for (let i = 0; i < SPACESHIP_COUNT; i++) {
+                spaceShips.push(new SpaceShip());
+            }
+            
+            console.log(`✅ Created ${STAR_COUNT} stars, ${ASTEROID_COUNT} asteroids, and ${SPACESHIP_COUNT} ships!`);
+        }
+        
+        function createSpaceExplosion(position) {
+            try {
+                if (!position) return;
+                
+                const particleCount = 10;
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = {
+                        position: position.clone(),
+                        velocity: new THREE.Vector3(
+                            (Math.random() - 0.5) * 3,
+                            (Math.random() - 0.5) * 3,
+                            (Math.random() - 0.5) * 3
+                        ),
+                        life: 0.8,
+                        color: new THREE.Color().setHSL(Math.random() * 0.2 + 0.1, 1, 0.8)
+                    };
+                    particles.push(particle);
+                }
+                
+                console.log('✨ Space explosion!');
+            } catch (error) {
+                console.warn('Space explosion error:', error);
+            }
+        }
+        
+        function updateSkyBattle(deltaTime, elapsedTime) {
+            try {
+                // Update stars
+                for (const star of stars) {
+                    star.update(elapsedTime);
+                }
+                
+                // Spawn shooting stars randomly
+                if (Math.random() < SHOOTING_STAR_SPAWN_RATE * deltaTime) {
+                    shootingStars.push(new ShootingStar());
+                    console.log('✨ Shooting star appeared!');
+                }
+                
+                // Update shooting stars
+                for (let i = shootingStars.length - 1; i >= 0; i--) {
+                    const shootingStar = shootingStars[i];
+                    if (shootingStar.update(deltaTime, elapsedTime)) {
+                        shootingStar.destroy();
+                        shootingStars.splice(i, 1);
+                    }
+                }
+                
+                // Update asteroids
+                for (let i = asteroids.length - 1; i >= 0; i--) {
+                    const asteroid = asteroids[i];
+                    asteroid.update(deltaTime);
+                    
+                    // Remove destroyed asteroids
+                    if (asteroid.health <= 0) {
+                        asteroids.splice(i, 1);
+                    }
+                }
+                
+                // Maintain minimum asteroid count
+                while (asteroids.length < ASTEROID_COUNT / 2) {
+                    asteroids.push(new Asteroid());
+                }
+                
+                // Update space ships
+                for (const ship of spaceShips) {
+                    ship.update(deltaTime, elapsedTime);
+                }
+                
+                // Update space bullets
+                for (let i = spaceBullets.length - 1; i >= 0; i--) {
+                    const bullet = spaceBullets[i];
+                    if (bullet.update(deltaTime)) {
+                        spaceBullets.splice(i, 1);
+                    }
+                }
+                
+            } catch (error) {
+                console.warn('Sky battle update error:', error);
+            }
+        }
+        
+        function initializeLightCycles() {
+            console.log('🏍️ Initializing Tron light cycles...');
+            
+            // Create two light cycles with different team colors
+            const teamColors = [0x00ffff, 0xff6600]; // Cyan and Orange
+            const startPositions = [
+                new THREE.Vector3(CYCLE_MIN_DISTANCE + 5, 0, CYCLE_MIN_DISTANCE + 5),
+                new THREE.Vector3(-CYCLE_MIN_DISTANCE - 5, 0, -CYCLE_MIN_DISTANCE - 5)
+            ];
+            
+            for (let i = 0; i < LIGHT_CYCLE_COUNT; i++) {
+                const cycle = new LightCycle(teamColors[i], startPositions[i]);
+                lightCycles.push(cycle);
+            }
+            
+            console.log(`✅ Created ${LIGHT_CYCLE_COUNT} light cycles for racing!`);
+        }
+        
+        function updateLightCycles(deltaTime, elapsedTime) {
+            try {
+                // Update light cycles
+                for (const cycle of lightCycles) {
+                    cycle.update(deltaTime, elapsedTime);
+                }
+                
+                // Update light trails
+                for (let i = lightTrails.length - 1; i >= 0; i--) {
+                    const trail = lightTrails[i];
+                    trail.update(elapsedTime);
+                    
+                    // Remove dead trails
+                    if (!trail.isAlive) {
+                        lightTrails.splice(i, 1);
+                    }
+                }
+                
+                // Optional: Check for trail collisions between cycles
+                checkLightCycleCollisions();
+                
+            } catch (error) {
+                console.warn('Light cycle update error:', error);
+            }
+        }
+        
+        function checkLightCycleCollisions() {
+            // Simple collision detection between cycles and existing trails
+            for (const cycle of lightCycles) {
+                if (!cycle.isAlive) continue;
+                
+                for (const trail of lightTrails) {
+                    if (!trail.isAlive) continue;
+                    
+                    const distance = cycle.position.distanceTo(trail.position);
+                    if (distance < 1.0) {
+                        // Check if this trail belongs to the other cycle
+                        const trailBelongsToThisCycle = cycle.trailSegments.includes(trail);
+                        if (!trailBelongsToThisCycle) {
+                            // Collision! Make a dramatic turn to avoid (or rarely crash)
+                            if (Math.random() < 0.9) { // 90% chance to avoid
+                                cycle.makeRandomTurn();
+                                console.log('🏍️ Light cycle avoided collision!');
+                            } else {
+                                // Rare dramatic crash
+                                cycle.destroy();
+                                console.log('💥 Light cycle crashed into trail!');
+                                
+                                // Respawn after delay
+                                setTimeout(() => {
+                                    const newCycle = new LightCycle(cycle.teamColor);
+                                    const cycleIndex = lightCycles.indexOf(cycle);
+                                    if (cycleIndex !== -1) {
+                                        lightCycles[cycleIndex] = newCycle;
+                                    }
+                                    console.log('🏍️ New light cycle deployed!');
+                                }, 3000);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        function detectFist(hand) {
+            try {
+                if (!hand.userData.isReady) return false;
+                
+                // Ensure we have valid tip positions
+                if (!hand.userData.tipPositions.INDEX || !hand.userData.tipPositions.MIDDLE || !hand.userData.tipPositions.THUMB) {
+                    return false;
+                }
+                
+                // Get joint positions for better fist detection
+                const joints = hand.joints;
+                if (!joints || !joints['wrist']) return false;
+                
+                const wrist = joints['wrist'].position;
+                const thumbTip = hand.userData.tipPositions.THUMB;
+                const indexTip = hand.userData.tipPositions.INDEX;
+                const middleTip = hand.userData.tipPositions.MIDDLE;
+                
+                // Check if fingertips are close to the wrist (curled fingers)
+                const thumbToWrist = thumbTip.distanceTo(wrist);
+                const indexToWrist = indexTip.distanceTo(wrist);
+                const middleToWrist = middleTip.distanceTo(wrist);
+                
+                // Debug logging
+                if (frameCount % 60 === 0) { // Log every 60 frames
+                    console.log('Fist detection:', {
+                        thumbToWrist: thumbToWrist.toFixed(3),
+                        indexToWrist: indexToWrist.toFixed(3),
+                        middleToWrist: middleToWrist.toFixed(3),
+                        velocity: hand.userData.velocity ? hand.userData.velocity.length().toFixed(3) : '0'
+                    });
+                }
+                
+                // If fingertips are close to wrist, it's a fist
+                return thumbToWrist < 0.12 && indexToWrist < 0.12 && middleToWrist < 0.12;
+            } catch (error) {
+                console.warn('Fist detection error:', error);
+                return false;
+            }
+        }
+        
+        function punchBlast(hand) {
+            try {
+                if (!hand.userData.tipPositions.MIDDLE || !hand.userData.velocity) return;
+                
+                const blastCenter = hand.userData.tipPositions.MIDDLE.clone();
+                const blastDirection = hand.userData.velocity.clone().normalize();
+                
+                console.log('Punch blast at:', blastCenter, 'direction:', blastDirection);
+                
+                // Create force blast effect
+                createForceBlastEffect(blastCenter, blastDirection);
+                
+                // Affect boids within blast radius
+                const boidsToRemove = [];
+                boids.forEach((boid, index) => {
+                    if (boid && boid.position) {
+                        const distance = boid.position.distanceTo(blastCenter);
+                        if (distance < PUNCH_FORCE_RADIUS) {
+                            // Create particle explosion
+                            createParticleExplosion(boid.position.clone());
+                            boidsToRemove.push(index);
+                        }
+                    }
+                });
+                
+                // Remove affected boids (in reverse order to maintain indices)
+                boidsToRemove.reverse().forEach(index => {
+                    boids.splice(index, 1);
+                });
+                
+                console.log('Punch blast destroyed', boidsToRemove.length, 'boids');
+                
+                // Also affect predators
+                predators.forEach(predator => {
+                    if (predator && predator.position) {
+                        const distance = predator.position.distanceTo(blastCenter);
+                        if (distance < PUNCH_FORCE_RADIUS) {
+                            // Push predators away
+                            const pushDirection = new THREE.Vector3().subVectors(predator.position, blastCenter).normalize();
+                            predator.velocity.add(pushDirection.multiplyScalar(0.5));
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn('Punch blast error:', error);
+            }
+        }
+        
+        function handleGrabbing(hand, heldVoxelMesh) {
+            try {
+                const grabRadius = 0.15; // Increased grab radius
+                
+                // Start grabbing
+                if (hand.userData.isPinching && hand.userData.heldVoxelIndex === null && hand.userData.heldBoidIndex === null) {
+                    // Try to grab fountain voxels first
+                    for (let i = 0; i < fountainVoxels.length; i++) {
+                        const voxel = fountainVoxels[i];
+                        if (voxel && voxel.active && hand.userData.tipPositions.INDEX.distanceTo(voxel.position) < grabRadius) {
+                            voxel.active = false;
+                            hand.userData.heldVoxelIndex = i;
+                            hand.userData.holdStartTime = clock.getElapsedTime();
+                            
+                            heldVoxelMesh.material.color.set(0x550055);
+                            heldVoxelMesh.material.emissive.set(0x550055);
+                            heldVoxelMesh.visible = true;
+                            console.log('Grabbed fountain voxel', i);
+                            return;
+                        }
+                    }
+                    
+                    // Try to grab active boids
+                    for (let i = 0; i < boids.length; i++) {
+                        const boid = boids[i];
+                        if (!boid.isGrabbed && hand.userData.tipPositions.INDEX.distanceTo(boid.position) < grabRadius) {
+                            boid.isGrabbed = true;
+                            boid.originalVelocity.copy(boid.velocity);
+                            hand.userData.heldBoidIndex = i;
+                            hand.userData.isGrabbingBoid = true;
+                            hand.userData.holdStartTime = clock.getElapsedTime();
+                            
+                            heldVoxelMesh.material.color.set(0xff4444);
+                            heldVoxelMesh.material.emissive.set(0xff2222);
+                            heldVoxelMesh.visible = true;
+                            console.log('Grabbed boid', i);
+                            return;
+                        }
+                    }
+                }
+
+                // Handle held voxel (revival or predator creation)
+                if (hand.userData.heldVoxelIndex !== null) {
+                    const holdDuration = clock.getElapsedTime() - hand.userData.holdStartTime;
+                    const isShaking = hand.userData.shakeIntensity > SHAKE_THRESHOLD;
+                    
+                    // Debug logging for shake detection
+                    if (frameCount % 30 === 0) { // Log every 30 frames
+                        console.log('Shake detection:', {
+                            shakeIntensity: hand.userData.shakeIntensity.toFixed(3),
+                            threshold: SHAKE_THRESHOLD,
+                            isShaking: isShaking,
+                            holdDuration: holdDuration.toFixed(2)
+                        });
+                    }
+                    
+                    if (!hand.userData.isPinching) {
+                        if (isShaking && holdDuration >= 1.0) {
+                            // Create predator from vigorous shaking
+                            const predator = new Predator(heldVoxelMesh.position.clone());
+                            predators.push(predator);
+                            console.log('Predator created! Total predators:', predators.length);
+                        } else if (holdDuration >= REVIVAL_TIME) {
+                            // Normal revival
+                            boids.push(new Boid(heldVoxelMesh.position.clone()));
+                            console.log('Boid revived! Total boids:', boids.length);
+                        } else {
+                            // Don't return fountain voxels - they should fade naturally
+                            console.log('Fountain voxel released');
+                        }
+                        
+                        hand.userData.heldVoxelIndex = null;
+                        heldVoxelMesh.visible = false;
+                        heldVoxelMesh.position.set(0, -1000, 0); // Move far away
+                    } else if (isShaking) {
+                        // Visual feedback for shaking - turn red
+                        heldVoxelMesh.material.color.set(0xff0000);
+                        heldVoxelMesh.material.emissive.set(0xff0000);
+                    }
+                }
+                
+                // Handle held boid (tossing mechanic)
+                if (hand.userData.heldBoidIndex !== null) {
+                    const boid = boids[hand.userData.heldBoidIndex];
+                    if (!hand.userData.isPinching) {
+                        // Release and toss the boid
+                        boid.isGrabbed = false;
+                        boid.isBeingTossed = true;
+                        boid.tossStartTime = clock.getElapsedTime();
+                        boid.tossVelocity.copy(hand.userData.velocity);
+                        boid.position.copy(heldVoxelMesh.position);
+                        
+                        hand.userData.heldBoidIndex = null;
+                        hand.userData.isGrabbingBoid = false;
+                        heldVoxelMesh.visible = false;
+                        heldVoxelMesh.position.set(0, -1000, 0); // Move far away
+                        console.log('Boid tossed');
+                    }
+                }
+            } catch (error) {
+                console.warn('Grabbing error:', error);
+            }
+        }
+        
+        function createForceBlastEffect(center, direction) {
+            // Create expanding ring of particles to show force blast
+            const particleCount = 30;
+            for (let i = 0; i < particleCount; i++) {
+                const angle = (i / particleCount) * Math.PI * 2;
+                const radius = 0.5;
+                const particle = {
+                    position: center.clone(),
+                    velocity: new THREE.Vector3(
+                        Math.cos(angle) * radius,
+                        (Math.random() - 0.5) * 0.5,
+                        Math.sin(angle) * radius
+                    ).add(direction.clone().multiplyScalar(0.5)),
+                    life: 0.8,
+                    color: new THREE.Color(0x00aaff)
+                };
+                particles.push(particle);
+            }
+        }
+        
+        
+        function addFallbackControls() {
+            const fallbackDiv = document.createElement('div');
+            fallbackDiv.style.position = 'absolute';
+            fallbackDiv.style.bottom = '20px';
+            fallbackDiv.style.left = '50%';
+            fallbackDiv.style.transform = 'translateX(-50%)';
+            fallbackDiv.style.padding = '12px 24px';
+            fallbackDiv.style.backgroundColor = 'rgba(255, 100, 100, 0.8)';
+            fallbackDiv.style.color = 'white';
+            fallbackDiv.style.borderRadius = '8px';
+            fallbackDiv.style.fontSize = '14px';
+            fallbackDiv.textContent = 'VR not supported - use mouse to look around';
+            document.body.appendChild(fallbackDiv);
+            
+            // Add basic mouse controls for fallback
+            let mouseX = 0, mouseY = 0;
+            document.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+                camera.position.x = mouseX * 5;
+                camera.position.y = mouseY * 3 + 1.6;
+                camera.lookAt(0, 2, 0);
+            });
+        }
+        
+        function updateHandData(hand) {
+            try {
+                if (hand.joints && hand.joints['index-finger-tip'] && hand.joints['thumb-tip'] && hand.joints['middle-finger-tip']) {
+                    hand.userData.isReady = true;
+                    const thumbTip = hand.joints['thumb-tip'].position;
+                    const indexTip = hand.joints['index-finger-tip'].position;
+                    const middleTip = hand.joints['middle-finger-tip'].position;
+                    
+                    // Store previous position for velocity calculation
+                    hand.userData.lastPosition.copy(hand.userData.tipPositions.INDEX);
+                    
+                    hand.userData.tipPositions.THUMB.copy(thumbTip);
+                    hand.userData.tipPositions.INDEX.copy(indexTip);
+                    hand.userData.tipPositions.MIDDLE.copy(middleTip);
+                    
+                    // Calculate hand velocity
+                    hand.userData.velocity.subVectors(hand.userData.tipPositions.INDEX, hand.userData.lastPosition);
+                    hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
+                    
+                    // Calculate shake intensity
+                    const currentSpeed = hand.userData.velocity.length();
+                    hand.userData.shakeHistory.push(currentSpeed);
+                    if (hand.userData.shakeHistory.length > 5) { // Shorter history for more responsive shaking
+                        hand.userData.shakeHistory.shift();
+                    }
+                    // Use max speed in recent history instead of average for better shake detection
+                    hand.userData.shakeIntensity = Math.max(...hand.userData.shakeHistory);
+                    
+                    // Improved pinch detection
+                    const thumbIndexDist = thumbTip.distanceTo(indexTip);
+                    const thumbMiddleDist = thumbTip.distanceTo(middleTip);
+                    hand.userData.isPinching = thumbIndexDist < 0.03 || thumbMiddleDist < 0.03;
+                } else {
+                    hand.userData.isReady = false;
+                }
+            } catch (error) {
+                console.warn('Hand tracking error:', error);
+                hand.userData.isReady = false;
+            }
+        }
+
+
+        function update() {
+            const elapsedTime = clock.getElapsedTime();
+            const dummy = new THREE.Object3D();
+            frameCount++;
+            const deltaTime = clock.getDelta();
+            
+            // Update punch cooldowns
+            if (punchCooldown1 > 0) {
+                punchCooldown1 -= deltaTime;
+            }
+            if (punchCooldown2 > 0) {
+                punchCooldown2 -= deltaTime;
+            }
+
+            // Only update hand data if XR is active
+            if (renderer.xr.isPresenting) {
+                updateHandData(hand1);
+                updateHandData(hand2);
+                handleGrabbing(hand1, heldVoxelMesh1);
+                handleGrabbing(hand2, heldVoxelMesh2);
+                
+                // Handle Game of Life touch interaction
+                handleGameOfLifeTouch(hand1);
+                handleGameOfLifeTouch(hand2);
+                
+                // Handle punch detection
+                [hand1, hand2].forEach((hand, index) => {
+                    try {
+                        const currentCooldown = index === 0 ? punchCooldown1 : punchCooldown2;
+                        if (currentCooldown > 0 || !hand.userData.isReady) return;
+                        
+                        hand.userData.isFist = detectFist(hand);
+                    
+                    // Detect punch (fist moving fast) - reduced threshold
+                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.5) {
+                        console.log('PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
+                        punchBlast(hand);
+                        if (index === 0) {
+                            punchCooldown1 = PUNCH_COOLDOWN;
+                        } else {
+                            punchCooldown2 = PUNCH_COOLDOWN;
+                        }
+                    }
+                    
+                    // Debug punch detection
+                    if (frameCount % 60 === 0 && hand.userData.isFist) {
+                        console.log('Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.5');
+                    }
+                    
+                    // Track punch velocity (change in fist position)
+                    if (hand.userData.isFist) {
+                        hand.userData.punchVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
+                    } else {
+                        hand.userData.punchVelocity = 0;
+                    }
+                } catch (error) {
+                    console.warn('Punch detection error:', error);
+                }
+            });
+            }
+            
+            // Update particles
+            try {
+                particles = particles.filter(particle => {
+                    if (!particle || !particle.position || !particle.velocity) return false;
+                    
+                    particle.life -= deltaTime * 2;
+                    if (particle.life <= 0) return false;
+                    
+                    particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
+                    particle.velocity.multiplyScalar(0.98); // Friction
+                    return true;
+                });
+            } catch (error) {
+                console.warn('Particle update error:', error);
+                particles = []; // Clear particles on error
+            }
+
+            // Update held objects for both hands
+            [hand1, hand2].forEach((hand, handIndex) => {
+                const heldMesh = handIndex === 0 ? heldVoxelMesh1 : heldVoxelMesh2;
+                
+                // Update held voxel (revival mechanic)
+                if (hand.userData.heldVoxelIndex !== null) {
+                    const voxelData = fountainVoxels[hand.userData.heldVoxelIndex];
+                    if (voxelData) {
+                        heldMesh.position.copy(hand.userData.tipPositions.INDEX);
+                        const chargeRatio = Math.min((elapsedTime - hand.userData.holdStartTime) / REVIVAL_TIME, 1.0);
+                        const finalColor = new THREE.Color(0x00ffaa); // Default final color
+                        heldMesh.material.color.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
+                        heldMesh.material.emissive.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
+                    }
+                }
+                
+                // Update held boid position
+                if (hand.userData.heldBoidIndex !== null) {
+                    const boid = boids[hand.userData.heldBoidIndex];
+                    heldMesh.position.copy(hand.userData.tipPositions.INDEX);
+                    boid.position.copy(heldMesh.position);
+                    
+                    // Visual feedback for held boid
+                    const holdTime = elapsedTime - hand.userData.holdStartTime;
+                    const pulseFactor = (Math.sin(holdTime * 10) + 1) / 2;
+                    heldMesh.material.emissive.setRGB(0.8 * pulseFactor, 0.2 * pulseFactor, 0.2 * pulseFactor);
+                }
+            });
+            
+            
+            // Update fountain voxels
+            updateFountainVoxels(elapsedTime, deltaTime);
+            
+            // Update Game of Life
+            updateGameOfLife(elapsedTime);
+            
+            // Update Battle Zone tank battle
+            updateTankBattle(deltaTime, elapsedTime);
+            
+            // Update sky battle and starfield
+            updateSkyBattle(deltaTime, elapsedTime);
+            
+            // Update Tron light cycles
+            updateLightCycles(deltaTime, elapsedTime);
+            
+            let activeFountainCount = 0;
+            fountainVoxels.forEach((voxel, i) => {
+                if (voxel && voxel.active) {
+                    dummy.position.copy(voxel.position);
+                    dummy.updateMatrix();
+                    fountainVoxelsMesh.setMatrixAt(activeFountainCount++, dummy.matrix);
+                }
+            });
+            fountainVoxelsMesh.count = activeFountainCount;
+            fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
+
+            const aliveVoxelsMesh = scene.getObjectByName('alive_voxels');
+            if (aliveVoxelsMesh && boids.length > 0) {
+                aliveVoxelsMesh.count = boids.length;
+                
+                // Performance optimization: only update flocking every few frames for distant boids
+                const shouldUpdateFlocking = frameCount % OPTIMIZATION_INTERVAL === 0;
+                
+                boids.forEach((boid, i) => {
+                    if (!boid.isGrabbed) {
+                        if (shouldUpdateFlocking || boid.isBeingTossed) {
+                            boid.flock(boids, [hand1, hand2], obstacles);
+                        }
+                        boid.checkBounds();
+                    }
+                    boid.update();
+                    dummy.position.copy(boid.position);
+                    if (boid.velocity.length() > 0.01) {
+                        dummy.lookAt(boid.position.clone().add(boid.velocity));
+                    }
+                    dummy.updateMatrix();
+                    aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
+                });
+                aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
+                
+                // Update predators
+                const predatorMesh = scene.getObjectByName('predators');
+                if (predatorMesh && predators.length > 0) {
+                    predatorMesh.count = predators.length;
+                    predators.forEach((predator, i) => {
+                        try {
+                            if (!predator.isGrabbed) {
+                                predator.hunt(boids);
+                                predator.checkBounds();
+                            }
+                            predator.update();
+                            dummy.position.copy(predator.position);
+                            if (predator.velocity && predator.velocity.length() > 0.01) {
+                                dummy.lookAt(predator.position.clone().add(predator.velocity));
+                            }
+                            dummy.updateMatrix();
+                            predatorMesh.setMatrixAt(i, dummy.matrix);
+                        } catch (error) {
+                            console.warn('Predator update error:', error);
+                        }
+                    });
+                    predatorMesh.instanceMatrix.needsUpdate = true;
+                }
+            }
+        }
+
+        function createParticleExplosion(position) {
+            try {
+                if (!position) return;
+                
+                const particleCount = 20;
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = {
+                        position: position.clone(),
+                        velocity: new THREE.Vector3(
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 2,
+                            (Math.random() - 0.5) * 2
+                        ),
+                        life: 1.0,
+                        color: new THREE.Color().setHSL(Math.random() * 0.1 + 0.05, 1, 0.5)
+                    };
+                    particles.push(particle);
+                }
+            } catch (error) {
+                console.warn('Particle explosion error:', error);
+            }
+        }
+        
+        function updateFountainVoxels(elapsedTime, deltaTime) {
+            try {
+                // Spawn new voxels
+                if (elapsedTime - window.lastFountainSpawn > (1.0 / fountainSpawnRate)) {
+                    spawnFountainVoxel();
+                    window.lastFountainSpawn = elapsedTime;
+                }
+                
+                // Update existing voxels
+                fountainVoxels.forEach((voxel, index) => {
+                    if (!voxel) return;
+                    
+                    // Update physics
+                    voxel.velocity.y -= 4.0 * deltaTime; // Gravity
+                    voxel.position.add(voxel.velocity.clone().multiplyScalar(deltaTime));
+                    
+                    // Age the voxel
+                    voxel.age += deltaTime;
+                    
+                    // Fade out over time
+                    const fadeStart = voxelLifetime * 0.7;
+                    if (voxel.age > fadeStart) {
+                        const fadeProgress = (voxel.age - fadeStart) / (voxelLifetime - fadeStart);
+                        voxel.opacity = Math.max(0, 1 - fadeProgress);
+                    }
+                    
+                    // Remove expired or fallen voxels
+                    if (voxel.age > voxelLifetime || voxel.position.y < -2) {
+                        fountainVoxels[index] = null;
+                    }
+                });
+                
+            } catch (error) {
+                console.warn('Fountain voxel update error:', error);
+            }
+        }
+        
+        function spawnFountainVoxel() {
+            try {
+                // Find empty slot
+                const emptyIndex = fountainVoxels.findIndex(voxel => voxel === null);
+                if (emptyIndex === -1) return; // No empty slots
+                
+                // Create new voxel with fountain physics
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.5 + Math.random() * 2.0;
+                const upwardSpeed = 2.0 + Math.random() * 2.5;
+                
+                const newVoxel = {
+                    position: window.fountainPosition.clone(),
+                    velocity: new THREE.Vector3(
+                        Math.cos(angle) * speed,
+                        upwardSpeed,
+                        Math.sin(angle) * speed
+                    ),
+                    age: 0,
+                    opacity: 1.0,
+                    active: true,
+                    finalColor: new THREE.Color().setHSL(0.5 + Math.random() * 0.3, 0.8, 0.6)
+                };
+                
+                fountainVoxels[emptyIndex] = newVoxel;
+                
+            } catch (error) {
+                console.warn('Fountain voxel spawn error:', error);
+            }
+        }
+
+        function initializeGameOfLife() {
+            // Initialize grid with some interesting starting patterns
+            for (let x = 0; x < GRID_SIZE_X; x++) {
+                gameOfLifeGrid[x] = [];
+                for (let y = 0; y < GRID_SIZE_Y; y++) {
+                    gameOfLifeGrid[x][y] = false;
+                }
+            }
+            
+            // Add some classic Conway patterns automatically throughout the height
+            addGliderPattern(2, 2);
+            addGliderPattern(12, 8);
+            addOscillatorPattern(8, 15);
+            addGliderPattern(4, 25);
+            addOscillatorPattern(10, 35);
+            addGliderPattern(6, 45);
+            addOscillatorPattern(2, 55);
+            addGliderPattern(11, 65);
+            addOscillatorPattern(7, 75);
+            
+            // Start the game automatically
+            gameOfLifeRunning = true;
+            console.log('🎮 Game of Life started with predefined patterns!');
+        }
+        
+        function addGliderPattern(startX, startY) {
+            // Classic glider pattern
+            const glider = [
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 1]
+            ];
+            
+            for (let y = 0; y < glider.length; y++) {
+                for (let x = 0; x < glider[y].length; x++) {
+                    const gridX = startX + x;
+                    const gridY = startY + y;
+                    if (gridX >= 0 && gridX < GRID_SIZE_X && gridY >= 0 && gridY < GRID_SIZE_Y) {
+                        gameOfLifeGrid[gridX][gridY] = glider[y][x] === 1;
+                        if (monolithPanels[gridX] && monolithPanels[gridX][gridY]) {
+                            updatePanelAppearance(monolithPanels[gridX][gridY], glider[y][x] === 1);
+                        }
+                    }
+                }
+            }
+        }
+        
+        function addOscillatorPattern(startX, startY) {
+            // Blinker oscillator pattern
+            const blinker = [
+                [1],
+                [1],
+                [1]
+            ];
+            
+            for (let y = 0; y < blinker.length; y++) {
+                for (let x = 0; x < blinker[y].length; x++) {
+                    const gridX = startX + x;
+                    const gridY = startY + y;
+                    if (gridX >= 0 && gridX < GRID_SIZE_X && gridY >= 0 && gridY < GRID_SIZE_Y) {
+                        gameOfLifeGrid[gridX][gridY] = blinker[y][x] === 1;
+                        if (monolithPanels[gridX] && monolithPanels[gridX][gridY]) {
+                            updatePanelAppearance(monolithPanels[gridX][gridY], blinker[y][x] === 1);
+                        }
+                    }
+                }
+            }
+        }
+        
+        function handleGameOfLifeTouch(hand) {
+            try {
+                if (!hand.userData.isReady || !hand.userData.tipPositions.INDEX) return;
+                
+                const touchPosition = hand.userData.tipPositions.INDEX;
+                const touchRadius = 0.08;
+                
+                // Check each panel for touch
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        if (!monolithPanels[x] || !monolithPanels[x][y]) continue;
+                        
+                        const panel = monolithPanels[x][y];
+                        const distance = touchPosition.distanceTo(panel.position);
+                        
+                        if (distance < touchRadius) {
+                            // Toggle cell state
+                            gameOfLifeGrid[x][y] = !gameOfLifeGrid[x][y];
+                            panel.userData.isAlive = gameOfLifeGrid[x][y];
+                            
+                            // Update panel appearance
+                            updatePanelAppearance(panel, gameOfLifeGrid[x][y]);
+                            
+                            // Play zen sound (placeholder - in real implementation you'd use Web Audio API)
+                            console.log('🎵 Zen touch sound at grid:', x, y);
+                            
+                            // Prevent multiple touches per frame
+                            return;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Game of Life touch error:', error);
+            }
+        }
+        
+        function updatePanelAppearance(panel, isAlive) {
+            if (!panel || !panel.material) return;
+            
+            if (isAlive) {
+                panel.material.color.setHex(0x00ffaa);
+                if (panel.material.emissive) {
+                    panel.material.emissive.setHex(0x004422);
+                }
+                panel.material.opacity = 0.9;
+            } else {
+                panel.material.color.setHex(0x001122);
+                if (panel.material.emissive) {
+                    panel.material.emissive.setHex(0x000000);
+                }
+                panel.material.opacity = 0.3;
+            }
+        }
+        
+        function updateGameOfLife(elapsedTime) {
+            try {
+                // Auto-progress Game of Life
+                if (gameOfLifeRunning && elapsedTime - lastGameOfLifeUpdate > (1.0 / GAME_OF_LIFE_SPEED)) {
+                    stepGameOfLife();
+                    lastGameOfLifeUpdate = elapsedTime;
+                }
+                
+                // Keep the game running continuously
+                if (!gameOfLifeRunning) {
+                    gameOfLifeRunning = true;
+                    console.log('🎮 Game of Life restarted!');
+                }
+            } catch (error) {
+                console.warn('Game of Life update error:', error);
+            }
+        }
+        
+        function stepGameOfLife() {
+            try {
+                const newGrid = [];
+                
+                // Initialize new grid
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    newGrid[x] = [];
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        newGrid[x][y] = false;
+                    }
+                }
+                
+                // Apply Conway's Game of Life rules
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        const neighbors = countNeighbors(x, y);
+                        const isAlive = gameOfLifeGrid[x][y];
+                        
+                        if (isAlive) {
+                            // Live cell rules
+                            if (neighbors === 2 || neighbors === 3) {
+                                newGrid[x][y] = true; // Survives
+                            }
+                            // else dies (underpopulation or overpopulation)
+                        } else {
+                            // Dead cell rules
+                            if (neighbors === 3) {
+                                newGrid[x][y] = true; // Birth
+                            }
+                        }
+                    }
+                }
+                
+                // Update grid and panels
+                let hasChanges = false;
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        if (gameOfLifeGrid[x][y] !== newGrid[x][y]) {
+                            hasChanges = true;
+                        }
+                        gameOfLifeGrid[x][y] = newGrid[x][y];
+                        
+                        if (monolithPanels[x] && monolithPanels[x][y]) {
+                            monolithPanels[x][y].userData.isAlive = newGrid[x][y];
+                            updatePanelAppearance(monolithPanels[x][y], newGrid[x][y]);
+                        }
+                    }
+                }
+                
+                // If no changes (stable state), add some new random patterns to keep it interesting
+                if (!hasChanges) {
+                    addRandomPattern();
+                    console.log('🎮 Game of Life reached stable state - adding new patterns!');
+                }
+                
+            } catch (error) {
+                console.warn('Game of Life step error:', error);
+            }
+        }
+        
+        function countNeighbors(x, y) {
+            let count = 0;
+            
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue; // Skip center cell
+                    
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    
+                    // Check bounds
+                    if (nx >= 0 && nx < GRID_SIZE_X && ny >= 0 && ny < GRID_SIZE_Y) {
+                        if (gameOfLifeGrid[nx][ny]) {
+                            count++;
+                        }
+                    }
+                }
+            }
+            
+            return count;
+        }
+        
+        function addRandomPattern() {
+            // Add random patterns to keep the simulation interesting
+            const patterns = [
+                () => addGliderPattern(Math.floor(Math.random() * (GRID_SIZE_X - 3)), Math.floor(Math.random() * (GRID_SIZE_Y - 3))),
+                () => addOscillatorPattern(Math.floor(Math.random() * (GRID_SIZE_X - 1)), Math.floor(Math.random() * (GRID_SIZE_Y - 3))),
+                () => {
+                    // Random small cluster
+                    const x = Math.floor(Math.random() * (GRID_SIZE_X - 2));
+                    const y = Math.floor(Math.random() * (GRID_SIZE_Y - 2));
+                    for (let dx = 0; dx < 2; dx++) {
+                        for (let dy = 0; dy < 2; dy++) {
+                            if (Math.random() > 0.5) {
+                                gameOfLifeGrid[x + dx][y + dy] = true;
+                                if (monolithPanels[x + dx] && monolithPanels[x + dx][y + dy]) {
+                                    updatePanelAppearance(monolithPanels[x + dx][y + dy], true);
+                                }
+                            }
+                        }
+                    }
+                }
+            ];
+            
+            // Add 1-3 random patterns
+            const numPatterns = Math.floor(Math.random() * 3) + 1;
+            for (let i = 0; i < numPatterns; i++) {
+                const randomPattern = patterns[Math.floor(Math.random() * patterns.length)];
+                randomPattern();
+            }
+        }
+
+        function render() { renderer.render(scene, camera); }
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+    </script>
+</body>
+</html>
