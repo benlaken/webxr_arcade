@@ -75,9 +75,9 @@
 
         const initialBoidCount = 25; // Further reduced by 50% for better performance
         const interactiveVoxelCount = 0; // Replaced with fountain system
-        const fountainVoxelCount = 50; // Further reduced by 50% for better performance
-        const fountainSpawnRate = 3; // Reduced for better performance while maintaining activity
-        const voxelLifetime = 15; // Seconds before voxels fade away
+        const fountainVoxelCount = 15; // Drastically reduced for Quest 3 performance
+        const fountainSpawnRate = 1; // Much slower spawn rate for Quest 3
+        const voxelLifetime = 8; // Shorter lifetime for better performance
         const boundSize = 20;
         
         // Punch blast variables
@@ -110,10 +110,10 @@
         const STAR_COUNT = 100; // Reduced for Quest performance
         const ASTEROID_COUNT = 6; // Reduced for Quest performance
         const SPACESHIP_COUNT = 1; // Single active hunter spaceship
-        const SKY_HEIGHT = 30; // Height above user for sky battle
-        const SKY_RADIUS = 50; // Radius of sky battle area
-        const ASTEROID_SPEED = 2.5; // Increased for more visible movement
-        const SPACESHIP_SPEED = 4.0; // Increased for more aggressive hunting
+        const SKY_HEIGHT = 15; // Lower height for better visibility
+        const SKY_RADIUS = 25; // Smaller radius for closer action
+        const ASTEROID_SPEED = 5.0; // Much faster for dramatic movement
+        const SPACESHIP_SPEED = 8.0; // Much faster for aggressive hunting
         const SPACE_BULLET_SPEED = 8.0;
         const SHOOTING_STAR_SPAWN_RATE = 0.05; // Chance per second
         const SHOOTING_STAR_SPEED = 15.0;
@@ -441,10 +441,11 @@
         // --- Sky Asteroids Classes ---
         class Star {
             constructor() {
+                // Adjust position for VR scene offset (8, 1.8, 8)
                 this.position = new THREE.Vector3(
-                    (Math.random() - 0.5) * SKY_RADIUS * 2,
-                    SKY_HEIGHT + Math.random() * 20,
-                    (Math.random() - 0.5) * SKY_RADIUS * 2
+                    8 + (Math.random() - 0.5) * SKY_RADIUS * 2,
+                    1.8 + SKY_HEIGHT + Math.random() * 20,
+                    8 + (Math.random() - 0.5) * SKY_RADIUS * 2
                 );
                 this.brightness = Math.random() * 0.8 + 0.2;
                 this.twinkleSpeed = Math.random() * 2 + 1;
@@ -454,7 +455,7 @@
             }
             
             createMesh() {
-                const geometry = new THREE.SphereGeometry(0.02, 4, 4);
+                const geometry = new THREE.SphereGeometry(0.1, 8, 8); // Much larger and higher quality for VR visibility
                 const material = new THREE.MeshBasicMaterial({ 
                     color: 0xffffff,
                     transparent: true,
@@ -475,15 +476,16 @@
         
         class Asteroid {
             constructor(position, size = 'large') {
+                // Adjust position for VR scene offset (8, 1.8, 8)
                 this.position = position || new THREE.Vector3(
-                    (Math.random() - 0.5) * SKY_RADIUS,
-                    SKY_HEIGHT + Math.random() * 10,
-                    (Math.random() - 0.5) * SKY_RADIUS
+                    8 + (Math.random() - 0.5) * SKY_RADIUS,
+                    1.8 + SKY_HEIGHT + Math.random() * 10,
+                    8 + (Math.random() - 0.5) * SKY_RADIUS
                 );
                 this.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 1.5, // More varied movement
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 0.8, // Increased Y movement
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 1.5
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 2.0, // Much more varied movement
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 1.2, // More dramatic Y movement
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 2.0
                 );
                 this.rotation = new THREE.Vector3(
                     Math.random() * 0.02,
@@ -526,24 +528,24 @@
                     this.mesh.rotation.z += this.rotation.z;
                 }
                 
-                // Wrap around sky boundaries
-                if (Math.abs(this.position.x) > SKY_RADIUS) {
-                    this.position.x = -Math.sign(this.position.x) * SKY_RADIUS;
+                // Wrap around sky boundaries (adjusted for VR offset)
+                if (Math.abs(this.position.x - 8) > SKY_RADIUS) {
+                    this.position.x = 8 - Math.sign(this.position.x - 8) * SKY_RADIUS;
                 }
-                if (Math.abs(this.position.z) > SKY_RADIUS) {
-                    this.position.z = -Math.sign(this.position.z) * SKY_RADIUS;
+                if (Math.abs(this.position.z - 8) > SKY_RADIUS) {
+                    this.position.z = 8 - Math.sign(this.position.z - 8) * SKY_RADIUS;
                 }
-                if (this.position.y < SKY_HEIGHT - 5) {
-                    this.position.y = SKY_HEIGHT + 15;
+                if (this.position.y < 1.8 + SKY_HEIGHT - 5) {
+                    this.position.y = 1.8 + SKY_HEIGHT + 15;
                 }
-                if (this.position.y > SKY_HEIGHT + 15) {
-                    this.position.y = SKY_HEIGHT - 5;
+                if (this.position.y > 1.8 + SKY_HEIGHT + 15) {
+                    this.position.y = 1.8 + SKY_HEIGHT - 5;
                 }
                 
-                // Debug logging for asteroid movement
+                // Enhanced debug logging for asteroid movement
                 const moved = oldPosition.distanceTo(this.position) > 0.1;
-                if (moved && Math.random() < 0.01) {
-                    console.log(`🌌 Asteroid moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)})`);
+                if (moved && Math.random() < 0.05) { // More frequent logging
+                    console.log(`🌌 Asteroid moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) speed=${ASTEROID_SPEED}`);
                 }
             }
             
@@ -595,10 +597,11 @@
         
         class SpaceShip {
             constructor() {
+                // Adjust position for VR scene offset (8, 1.8, 8)
                 this.position = new THREE.Vector3(
-                    (Math.random() - 0.5) * SKY_RADIUS,
-                    SKY_HEIGHT + Math.random() * 10,
-                    (Math.random() - 0.5) * SKY_RADIUS
+                    8 + (Math.random() - 0.5) * SKY_RADIUS,
+                    1.8 + SKY_HEIGHT + Math.random() * 10,
+                    8 + (Math.random() - 0.5) * SKY_RADIUS
                 );
                 this.velocity = new THREE.Vector3();
                 this.rotation = Math.random() * Math.PI * 2;
@@ -615,7 +618,7 @@
                 const shipGroup = new THREE.Group();
                 
                 // Much larger, very visible triangular ship shape
-                const shipGeometry = new THREE.ConeGeometry(1.2, 4.8, 3);
+                const shipGeometry = new THREE.ConeGeometry(2.0, 6.0, 3); // Even larger for VR visibility
                 const shipMaterial = new THREE.MeshBasicMaterial({ 
                     color: 0x00ffff,
                     wireframe: true,
@@ -628,7 +631,7 @@
                 shipGroup.add(ship);
                 
                 // Add multiple bright markers for maximum visibility
-                const markerGeometry = new THREE.SphereGeometry(0.8, 8, 8);
+                const markerGeometry = new THREE.SphereGeometry(1.2, 8, 8); // Larger markers for VR
                 const markerMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffff00,
                     emissive: 0xffff00,
@@ -687,19 +690,19 @@
                         this.pulseMarker.scale.setScalar(pulseScale);
                     }
                     
-                    // Debug logging for spaceship movement
+                    // Enhanced debug logging for spaceship movement
                     const moved = oldPosition.distanceTo(this.position) > 0.1;
-                    if (moved && Math.random() < 0.02) {
-                        console.log(`🚀 Spaceship moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)})`);
+                    if (moved && Math.random() < 0.05) { // More frequent logging
+                        console.log(`🚀 Spaceship moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) target=${this.target ? 'YES' : 'NO'}`);
                     }
                 }
                 
-                // Wrap around boundaries
-                if (Math.abs(this.position.x) > SKY_RADIUS) {
-                    this.position.x = -Math.sign(this.position.x) * SKY_RADIUS;
+                // Wrap around boundaries (adjusted for VR offset)
+                if (Math.abs(this.position.x - 8) > SKY_RADIUS) {
+                    this.position.x = 8 - Math.sign(this.position.x - 8) * SKY_RADIUS;
                 }
-                if (Math.abs(this.position.z) > SKY_RADIUS) {
-                    this.position.z = -Math.sign(this.position.z) * SKY_RADIUS;
+                if (Math.abs(this.position.z - 8) > SKY_RADIUS) {
+                    this.position.z = 8 - Math.sign(this.position.z - 8) * SKY_RADIUS;
                 }
                 
                 // Try to fire
@@ -739,7 +742,7 @@
                         Math.sin(this.rotation),
                         0,
                         Math.cos(this.rotation)
-                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 2.5); // Much higher thrust for visible movement
+                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 4.0); // Extremely high thrust for dramatic movement
                     
                     this.velocity.add(thrustForce);
                     this.thrust = true;
@@ -756,7 +759,7 @@
                             Math.sin(this.rotation),
                             0,
                             Math.cos(this.rotation)
-                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 0.8);
+                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 2.0); // Faster patrol movement
                         
                         this.velocity.add(thrustForce);
                     }
@@ -873,41 +876,42 @@
                 const side = Math.floor(Math.random() * 4);
                 const skySize = SKY_RADIUS * 1.5;
                 
+                // Adjust all positions for VR scene offset (8, 1.8, 8)
                 switch(side) {
                     case 0: // Top
                         this.position = new THREE.Vector3(
-                            (Math.random() - 0.5) * skySize,
-                            SKY_HEIGHT + 25 + Math.random() * 10,
-                            skySize
+                            8 + (Math.random() - 0.5) * skySize,
+                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
+                            8 + skySize
                         );
                         break;
                     case 1: // Right
                         this.position = new THREE.Vector3(
-                            skySize,
-                            SKY_HEIGHT + 25 + Math.random() * 10,
-                            (Math.random() - 0.5) * skySize
+                            8 + skySize,
+                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
+                            8 + (Math.random() - 0.5) * skySize
                         );
                         break;
                     case 2: // Bottom
                         this.position = new THREE.Vector3(
-                            (Math.random() - 0.5) * skySize,
-                            SKY_HEIGHT + 25 + Math.random() * 10,
-                            -skySize
+                            8 + (Math.random() - 0.5) * skySize,
+                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
+                            8 + (-skySize)
                         );
                         break;
                     case 3: // Left
                         this.position = new THREE.Vector3(
-                            -skySize,
-                            SKY_HEIGHT + 25 + Math.random() * 10,
-                            (Math.random() - 0.5) * skySize
+                            8 + (-skySize),
+                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
+                            8 + (Math.random() - 0.5) * skySize
                         );
                         break;
                 }
                 
-                // Create velocity toward opposite side with downward angle
-                const targetX = (Math.random() - 0.5) * skySize;
-                const targetY = SKY_HEIGHT + Math.random() * 15;
-                const targetZ = (Math.random() - 0.5) * skySize;
+                // Create velocity toward opposite side with downward angle (adjusted for VR offset)
+                const targetX = 8 + (Math.random() - 0.5) * skySize;
+                const targetY = 1.8 + SKY_HEIGHT + Math.random() * 15;
+                const targetZ = 8 + (Math.random() - 0.5) * skySize;
                 
                 const direction = new THREE.Vector3(targetX, targetY, targetZ).sub(this.position);
                 direction.normalize();
@@ -1014,7 +1018,7 @@
             constructor(teamColor, startPosition) {
                 this.position = startPosition || new THREE.Vector3(
                     CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE),
-                    0.2, // Position above ground to account for wheel radius
+                    0.5, // Higher above ground to ensure visibility
                     CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE)
                 );
                 this.velocity = new THREE.Vector3();
@@ -1044,7 +1048,7 @@
                     emissive: this.teamColor
                 });
                 const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-                body.position.y = 0.1; // Adjusted for ground positioning
+                body.position.y = 0.4; // Raised higher above ground
                 cycleGroup.add(body);
                 
                 // Enhanced light strips for better visibility
@@ -1058,12 +1062,12 @@
                 
                 // Top strip
                 const topStrip = new THREE.Mesh(stripGeometry, stripMaterial);
-                topStrip.position.y = 0.45;
+                topStrip.position.y = 0.75; // Raised with body
                 cycleGroup.add(topStrip);
                 
                 // Bottom strip
                 const bottomStrip = new THREE.Mesh(stripGeometry, stripMaterial);
-                bottomStrip.position.y = -0.05;
+                bottomStrip.position.y = 0.25; // Above ground level
                 cycleGroup.add(bottomStrip);
                 
                 // Larger, more visible wheels
@@ -1077,12 +1081,12 @@
                 });
                 
                 const frontWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-                frontWheel.position.set(0, 0, 1.0); // Positioned on ground (y=0)
+                frontWheel.position.set(0, 0.3, 1.0); // Raised above ground
                 frontWheel.rotation.z = Math.PI / 2;
                 cycleGroup.add(frontWheel);
                 
                 const backWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-                backWheel.position.set(0, 0, -1.0); // Positioned on ground (y=0)
+                backWheel.position.set(0, 0.3, -1.0); // Raised above ground
                 backWheel.rotation.z = Math.PI / 2;
                 cycleGroup.add(backWheel);
                 
@@ -1095,7 +1099,7 @@
                     opacity: 0.8
                 });
                 const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-                marker.position.y = 0.6;
+                marker.position.y = 0.9; // Raised with body
                 cycleGroup.add(marker);
                 
                 this.mesh = cycleGroup;
@@ -1127,8 +1131,8 @@
                 const oldPosition = this.position.clone();
                 this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
                 
-                // Keep light cycle on ground level
-                this.position.y = 0.2;
+                // Keep light cycle above ground level
+                this.position.y = Math.max(this.position.y, 0.5);
                 
                 // Keep within racing boundaries and avoid user area
                 this.checkBoundaries();
@@ -1994,12 +1998,12 @@
             // Initialize spawn timing and start fountain immediately
             window.lastFountainSpawn = 0;
             
-            // Pre-spawn fewer initial voxels for better performance
-            for (let i = 0; i < 4; i++) {
+            // Pre-spawn minimal initial voxels for Quest 3 performance
+            for (let i = 0; i < 2; i++) {
                 setTimeout(() => {
                     spawnFountainVoxel();
-                    if (i === 0) console.log('Fountain system activated - reduced initial spawning for performance');
-                }, i * 200);
+                    if (i === 0) console.log('Fountain system activated - minimal spawning for Quest 3 performance');
+                }, i * 500);
             }
             
             // --- REVISED: Create two proxy meshes for holding, one for each hand ---
@@ -2089,20 +2093,21 @@
                 // Force hand visibility
                 hand.visible = true;
                 
-                scene.add(hand);
-                console.log(`Hand ${index} setup complete with enhanced visual indicators - hand sphere at (0,0,0) relative to hand position`);
+                // Add hands to camera instead of scene so they stay with user in VR
+                camera.add(hand);
+                console.log(`Hand ${index} setup complete and added to camera - will follow user position`);
                 
-                // Additional debug: Force add very visible markers to scene directly
+                // Additional debug: Add visible markers that follow the camera/user
                 const debugMarker = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.2, 8, 8),
+                    new THREE.SphereGeometry(0.1, 8, 8),
                     new THREE.MeshBasicMaterial({
                         color: index === 0 ? 0x00ff00 : 0xff0000,
                         emissive: index === 0 ? 0x00ff00 : 0xff0000
                     })
                 );
-                debugMarker.position.set(index === 0 ? -1 : 1, 1.5, -2); // Fixed positions in front of user
-                scene.add(debugMarker);
-                console.log(`Debug marker added to scene at position:`, debugMarker.position);
+                debugMarker.position.set(index === 0 ? -0.5 : 0.5, -0.3, -1); // Closer to user view
+                camera.add(debugMarker);
+                console.log(`Debug marker added to camera at relative position:`, debugMarker.position);
             });
             
             // No controller setup needed for hand-only experience
@@ -2114,19 +2119,22 @@
                 // Hide ALL possible UI elements in VR to fix dark overlay issue
                 const infoDiv = document.getElementById('info');
                 const vrButton = document.querySelector('#vr-button');
-                const vrButtonAlt = document.querySelector('button'); // Alternative VR button selector
+                const vrButtonAlt = document.querySelector('button');
+                const vrButtonThreeJS = document.querySelector('[id*="VRButton"]'); // Three.js VR button
                 const allDivs = document.querySelectorAll('div');
                 const allButtons = document.querySelectorAll('button');
                 const allCanvases = document.querySelectorAll('canvas');
+                const allElements = document.querySelectorAll('*');
                 
                 // Hide main UI elements
-                [infoDiv, vrButton, vrButtonAlt].forEach(element => {
+                [infoDiv, vrButton, vrButtonAlt, vrButtonThreeJS].forEach(element => {
                     if (element) {
                         element.style.display = 'none !important';
                         element.style.visibility = 'hidden !important';
                         element.style.opacity = '0 !important';
                         element.style.pointerEvents = 'none !important';
                         element.style.zIndex = '-9999 !important';
+                        element.style.transform = 'scale(0) !important';
                         console.log('Hidden element:', element.tagName, element.id || element.className);
                     }
                 });
@@ -2159,27 +2167,50 @@
                     }
                 });
                 
-                // Extra aggressive hiding - target any element with background or overlay properties
-                document.querySelectorAll('*').forEach(element => {
-                    const computedStyle = window.getComputedStyle(element);
-                    const hasBackground = computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && 
-                                         computedStyle.backgroundColor !== 'transparent';
-                    const hasOverlay = computedStyle.zIndex > 0;
-                    
-                    if ((hasBackground || hasOverlay) && element !== document.body && element !== document.documentElement) {
-                        element.style.display = 'none !important';
-                        element.style.visibility = 'hidden !important';
-                        element.style.opacity = '0 !important';
+                // Nuclear option: Hide EVERYTHING except canvas and essential elements
+                allElements.forEach(element => {
+                    // Skip essential elements
+                    if (element === document.body || 
+                        element === document.documentElement || 
+                        element === document.head ||
+                        element.tagName === 'SCRIPT' ||
+                        element.tagName === 'STYLE' ||
+                        element.tagName === 'META' ||
+                        element.tagName === 'TITLE' ||
+                        element.tagName === 'LINK' ||
+                        element === renderer.domElement ||
+                        element.contains(renderer.domElement)) {
+                        return;
                     }
+                    
+                    // Hide everything else aggressively
+                    element.style.display = 'none !important';
+                    element.style.visibility = 'hidden !important';
+                    element.style.opacity = '0 !important';
+                    element.style.pointerEvents = 'none !important';
+                    element.style.position = 'absolute !important';
+                    element.style.left = '-9999px !important';
+                    element.style.top = '-9999px !important';
+                    element.style.transform = 'scale(0) !important';
+                    element.style.zIndex = '-9999 !important';
                 });
+                
+                // Force canvas to be the only visible element
+                if (renderer.domElement) {
+                    renderer.domElement.style.display = 'block !important';
+                    renderer.domElement.style.visibility = 'visible !important';
+                    renderer.domElement.style.opacity = '1 !important';
+                    renderer.domElement.style.zIndex = '1 !important';
+                }
                 
                 // Add VR class to body for CSS-based hiding
                 document.body.classList.add('vr-active');
                 
-                // Offset the user position when entering VR with proper floor height
-                const offsetPosition = new THREE.Vector3(8, 1.8, 8); // Proper standing height
+                // Offset the SCENE position (not camera) so hands stay with user
+                const offsetPosition = new THREE.Vector3(8, 1.8, 8);
                 scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
-                console.log('VR session started - comprehensive UI hiding complete, user positioned above ground level');
+                
+                console.log('VR session started - hands attached to camera, scene offset for proper positioning');
             });
             
             renderer.xr.addEventListener('sessionend', () => {
@@ -2205,7 +2236,7 @@
                 
                 // Reset scene position when exiting VR
                 scene.position.set(0, 0, 0);
-                console.log('UI elements restored after VR session');
+                console.log('UI elements restored and scene position reset after VR session');
             });
 
             renderer.setAnimationLoop(() => { update(); render(); });
@@ -3216,9 +3247,11 @@
                 fountainVoxels.forEach((voxel, index) => {
                     if (!voxel) return;
                     
-                    // Update physics
-                    voxel.velocity.y -= 4.0 * deltaTime; // Gravity
-                    voxel.position.add(voxel.velocity.clone().multiplyScalar(deltaTime));
+                    // Simplified physics for Quest 3 performance
+                    if (frameCount % 3 === 0) { // Update physics every 3rd frame
+                        voxel.velocity.y -= 12.0 * deltaTime; // Compensate for lower update rate
+                        voxel.position.add(voxel.velocity.clone().multiplyScalar(deltaTime * 3));
+                    }
                     
                     // Age the voxel
                     voxel.age += deltaTime;
