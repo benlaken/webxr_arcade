@@ -621,8 +621,7 @@
                     wireframe: true,
                     transparent: true,
                     opacity: 1.0,
-                    emissive: 0x006666,
-                    emissiveIntensity: 0.8
+                    emissive: 0x006666
                 });
                 const ship = new THREE.Mesh(shipGeometry, shipMaterial);
                 ship.rotation.x = Math.PI / 2; // Point forward
@@ -633,7 +632,6 @@
                 const markerMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffff00,
                     emissive: 0xffff00,
-                    emissiveIntensity: 1.0,
                     transparent: true,
                     opacity: 1.0
                 });
@@ -646,7 +644,6 @@
                 const pulseMaterial = new THREE.MeshBasicMaterial({
                     color: 0xff0080,
                     emissive: 0xff0080,
-                    emissiveIntensity: 0.6,
                     transparent: true,
                     opacity: 0.5
                 });
@@ -1044,8 +1041,7 @@
                     wireframe: true,
                     transparent: true,
                     opacity: 1.0,
-                    emissive: this.teamColor,
-                    emissiveIntensity: 0.3
+                    emissive: this.teamColor
                 });
                 const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
                 body.position.y = 0.1; // Adjusted for ground positioning
@@ -1057,8 +1053,7 @@
                     color: this.teamColor,
                     transparent: true,
                     opacity: 1.0,
-                    emissive: this.teamColor,
-                    emissiveIntensity: 0.5
+                    emissive: this.teamColor
                 });
                 
                 // Top strip
@@ -1078,8 +1073,7 @@
                     wireframe: true,
                     transparent: true,
                     opacity: 0.9,
-                    emissive: this.teamColor,
-                    emissiveIntensity: 0.2
+                    emissive: this.teamColor
                 });
                 
                 const frontWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
@@ -1097,7 +1091,6 @@
                 const markerMaterial = new THREE.MeshBasicMaterial({
                     color: this.teamColor,
                     emissive: this.teamColor,
-                    emissiveIntensity: 0.8,
                     transparent: true,
                     opacity: 0.8
                 });
@@ -2072,8 +2065,7 @@
                     new THREE.MeshBasicMaterial({ 
                         color: index === 0 ? 0x00ff00 : 0xff0000, // Green/Red for clear distinction
                         transparent: false, // Solid for maximum visibility
-                        emissive: index === 0 ? 0x008800 : 0x880000,
-                        emissiveIntensity: 0.8
+                        emissive: index === 0 ? 0x008800 : 0x880000
                     })
                 );
                 hand.add(handSphere);
@@ -2085,8 +2077,7 @@
                     new THREE.MeshBasicMaterial({ 
                         color: 0xffff00, 
                         transparent: false,
-                        emissive: 0x888800,
-                        emissiveIntensity: 1.0
+                        emissive: 0x888800
                     })
                 );
                 hand.add(fingerSphere);
@@ -2106,8 +2097,7 @@
                     new THREE.SphereGeometry(0.2, 8, 8),
                     new THREE.MeshBasicMaterial({
                         color: index === 0 ? 0x00ff00 : 0xff0000,
-                        emissive: index === 0 ? 0x00ff00 : 0xff0000,
-                        emissiveIntensity: 0.5
+                        emissive: index === 0 ? 0x00ff00 : 0xff0000
                     })
                 );
                 debugMarker.position.set(index === 0 ? -1 : 1, 1.5, -2); // Fixed positions in front of user
