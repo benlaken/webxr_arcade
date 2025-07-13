@@ -9,6 +9,22 @@
         #info { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 15px 25px; background-color: rgba(0, 0, 0, 0.5); border-radius: 12px; text-align: center; font-size: 16px; z-index: 10; max-width: 90%; }
         #vr-button { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; border: 1px solid #fff; background-color: rgba(0,0,0,0.5); color: #fff; padding: 12px 24px; border-radius: 999px; cursor: pointer; font-weight: 600; }
         #vr-button:hover { background-color: rgba(255,255,255,0.2); }
+        
+        /* VR Mode - Force hide all potential overlay elements */
+        .vr-active * {
+            display: none !important;
+        }
+        .vr-active canvas {
+            display: block !important;
+        }
+        
+        /* Aggressive overlay prevention */
+        button[data-vr] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -57,10 +73,10 @@
         const REVIVAL_TIME = 3; 
         const SHAKE_THRESHOLD = 0.8; // Reduced shake intensity needed to create predator
 
-        const initialBoidCount = 50; // Reduced for Quest performance
+        const initialBoidCount = 25; // Further reduced by 50% for better performance
         const interactiveVoxelCount = 0; // Replaced with fountain system
-        const fountainVoxelCount = 100; // Max voxels in fountain at once (reduced for performance)
-        const fountainSpawnRate = 3; // Voxels per second (reduced for Quest performance)
+        const fountainVoxelCount = 50; // Further reduced by 50% for better performance
+        const fountainSpawnRate = 3; // Reduced for better performance while maintaining activity
         const voxelLifetime = 15; // Seconds before voxels fade away
         const boundSize = 20;
         
@@ -72,7 +88,7 @@
         
         // Performance optimization variables
         let frameCount = 0;
-        const OPTIMIZATION_INTERVAL = 15; // Update every 15 frames (increased for Quest performance)
+        const OPTIMIZATION_INTERVAL = 25; // Update every 25 frames (further increased for better performance)
         
         // Battle Zone tank system
         let tanks = [];
@@ -96,8 +112,8 @@
         const SPACESHIP_COUNT = 1; // Single active hunter spaceship
         const SKY_HEIGHT = 30; // Height above user for sky battle
         const SKY_RADIUS = 50; // Radius of sky battle area
-        const ASTEROID_SPEED = 1.0;
-        const SPACESHIP_SPEED = 2.0;
+        const ASTEROID_SPEED = 2.5; // Increased for more visible movement
+        const SPACESHIP_SPEED = 4.0; // Increased for more aggressive hunting
         const SPACE_BULLET_SPEED = 8.0;
         const SHOOTING_STAR_SPAWN_RATE = 0.05; // Chance per second
         const SHOOTING_STAR_SPEED = 15.0;
@@ -465,9 +481,9 @@
                     (Math.random() - 0.5) * SKY_RADIUS
                 );
                 this.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * ASTEROID_SPEED,
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 0.5,
-                    (Math.random() - 0.5) * ASTEROID_SPEED
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 1.5, // More varied movement
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 0.8, // Increased Y movement
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 1.5
                 );
                 this.rotation = new THREE.Vector3(
                     Math.random() * 0.02,
@@ -500,6 +516,7 @@
             }
             
             update(deltaTime) {
+                const oldPosition = this.position.clone();
                 this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
                 
                 if (this.mesh) {
@@ -521,6 +538,12 @@
                 }
                 if (this.position.y > SKY_HEIGHT + 15) {
                     this.position.y = SKY_HEIGHT - 5;
+                }
+                
+                // Debug logging for asteroid movement
+                const moved = oldPosition.distanceTo(this.position) > 0.1;
+                if (moved && Math.random() < 0.01) {
+                    console.log(`🌌 Asteroid moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)})`);
                 }
             }
             
@@ -591,21 +614,53 @@
             createMesh() {
                 const shipGroup = new THREE.Group();
                 
-                // Classic triangular ship shape
-                const shipGeometry = new THREE.ConeGeometry(0.3, 1.2, 3);
+                // Much larger, very visible triangular ship shape
+                const shipGeometry = new THREE.ConeGeometry(1.2, 4.8, 3);
                 const shipMaterial = new THREE.MeshBasicMaterial({ 
                     color: 0x00ffff,
                     wireframe: true,
                     transparent: true,
-                    opacity: 0.9
+                    opacity: 1.0,
+                    emissive: 0x006666,
+                    emissiveIntensity: 0.8
                 });
                 const ship = new THREE.Mesh(shipGeometry, shipMaterial);
                 ship.rotation.x = Math.PI / 2; // Point forward
                 shipGroup.add(ship);
                 
+                // Add multiple bright markers for maximum visibility
+                const markerGeometry = new THREE.SphereGeometry(0.8, 8, 8);
+                const markerMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xffff00,
+                    emissive: 0xffff00,
+                    emissiveIntensity: 1.0,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                marker.position.y = 1.0;
+                shipGroup.add(marker);
+                
+                // Add pulsing effect marker
+                const pulseGeometry = new THREE.SphereGeometry(1.0, 8, 8);
+                const pulseMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xff0080,
+                    emissive: 0xff0080,
+                    emissiveIntensity: 0.6,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const pulseMarker = new THREE.Mesh(pulseGeometry, pulseMaterial);
+                pulseMarker.position.y = 1.0;
+                shipGroup.add(pulseMarker);
+                this.pulseMarker = pulseMarker;
+                
                 this.mesh = shipGroup;
                 this.mesh.position.copy(this.position);
+                this.mesh.visible = true;
                 scene.add(shipGroup);
+                
+                console.log('Enhanced spaceship created with maximum visibility');
             }
             
             update(deltaTime, elapsedTime) {
@@ -616,6 +671,7 @@
                 this.updateAI(deltaTime);
                 
                 // Update physics
+                const oldPosition = this.position.clone();
                 this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
                 this.rotation += this.angularVelocity * deltaTime;
                 
@@ -627,6 +683,18 @@
                 if (this.mesh) {
                     this.mesh.position.copy(this.position);
                     this.mesh.rotation.y = this.rotation;
+                    
+                    // Add pulsing effect to marker
+                    if (this.pulseMarker) {
+                        const pulseScale = 1.0 + Math.sin(elapsedTime * 4.0) * 0.3;
+                        this.pulseMarker.scale.setScalar(pulseScale);
+                    }
+                    
+                    // Debug logging for spaceship movement
+                    const moved = oldPosition.distanceTo(this.position) > 0.1;
+                    if (moved && Math.random() < 0.02) {
+                        console.log(`🚀 Spaceship moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)})`);
+                    }
                 }
                 
                 // Wrap around boundaries
@@ -674,7 +742,7 @@
                         Math.sin(this.rotation),
                         0,
                         Math.cos(this.rotation)
-                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 1.5); // Increased thrust
+                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 2.5); // Much higher thrust for visible movement
                     
                     this.velocity.add(thrustForce);
                     this.thrust = true;
@@ -716,7 +784,7 @@
                     if (Math.abs(angleDiff) < Math.PI / 6) {
                         this.fire();
                         this.lastFireTime = elapsedTime;
-                        console.log('🚀 Spaceship firing at asteroid!');
+                        console.log(`🚀 Spaceship firing at asteroid! Distance: ${distance.toFixed(1)} units`);
                     }
                 }
             }
@@ -949,7 +1017,7 @@
             constructor(teamColor, startPosition) {
                 this.position = startPosition || new THREE.Vector3(
                     CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE),
-                    0,
+                    0.2, // Position above ground to account for wheel radius
                     CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE)
                 );
                 this.velocity = new THREE.Vector3();
@@ -969,58 +1037,80 @@
             createMesh() {
                 const cycleGroup = new THREE.Group();
                 
-                // Main body (sleek rectangular chassis)
-                const bodyGeometry = new THREE.BoxGeometry(0.6, 0.3, 1.8);
+                // Larger, more visible main body for Quest 3
+                const bodyGeometry = new THREE.BoxGeometry(1.2, 0.6, 3.0);
                 const bodyMaterial = new THREE.MeshBasicMaterial({ 
                     color: this.teamColor,
                     wireframe: true,
                     transparent: true,
-                    opacity: 0.9
+                    opacity: 1.0,
+                    emissive: this.teamColor,
+                    emissiveIntensity: 0.3
                 });
                 const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-                body.position.y = 0.15;
+                body.position.y = 0.1; // Adjusted for ground positioning
                 cycleGroup.add(body);
                 
-                // Light strips (glowing edges)
-                const stripGeometry = new THREE.BoxGeometry(0.65, 0.05, 1.85);
+                // Enhanced light strips for better visibility
+                const stripGeometry = new THREE.BoxGeometry(1.3, 0.1, 3.1);
                 const stripMaterial = new THREE.MeshBasicMaterial({ 
                     color: this.teamColor,
                     transparent: true,
-                    opacity: 1.0
+                    opacity: 1.0,
+                    emissive: this.teamColor,
+                    emissiveIntensity: 0.5
                 });
                 
                 // Top strip
                 const topStrip = new THREE.Mesh(stripGeometry, stripMaterial);
-                topStrip.position.y = 0.35;
+                topStrip.position.y = 0.45;
                 cycleGroup.add(topStrip);
                 
                 // Bottom strip
                 const bottomStrip = new THREE.Mesh(stripGeometry, stripMaterial);
-                bottomStrip.position.y = 0.05;
+                bottomStrip.position.y = -0.05;
                 cycleGroup.add(bottomStrip);
                 
-                // Wheels (wireframe cylinders)
-                const wheelGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
+                // Larger, more visible wheels
+                const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
                 const wheelMaterial = new THREE.MeshBasicMaterial({ 
                     color: this.teamColor,
                     wireframe: true,
                     transparent: true,
-                    opacity: 0.7
+                    opacity: 0.9,
+                    emissive: this.teamColor,
+                    emissiveIntensity: 0.2
                 });
                 
                 const frontWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-                frontWheel.position.set(0, 0.2, 0.6);
+                frontWheel.position.set(0, 0, 1.0); // Positioned on ground (y=0)
                 frontWheel.rotation.z = Math.PI / 2;
                 cycleGroup.add(frontWheel);
                 
                 const backWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-                backWheel.position.set(0, 0.2, -0.6);
+                backWheel.position.set(0, 0, -1.0); // Positioned on ground (y=0)
                 backWheel.rotation.z = Math.PI / 2;
                 cycleGroup.add(backWheel);
                 
+                // Add bright marker for extra visibility
+                const markerGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+                const markerMaterial = new THREE.MeshBasicMaterial({
+                    color: this.teamColor,
+                    emissive: this.teamColor,
+                    emissiveIntensity: 0.8,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+                marker.position.y = 0.6;
+                cycleGroup.add(marker);
+                
                 this.mesh = cycleGroup;
                 this.mesh.position.copy(this.position);
+                this.mesh.visible = true;
                 scene.add(cycleGroup);
+                
+                console.log(`Light cycle created at position:`, this.position, `with color:`, this.teamColor.toString(16));
             }
             
             setInitialVelocity() {
@@ -1041,7 +1131,11 @@
                 }
                 
                 // Update position
+                const oldPosition = this.position.clone();
                 this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                
+                // Keep light cycle on ground level
+                this.position.y = 0.2;
                 
                 // Keep within racing boundaries and avoid user area
                 this.checkBoundaries();
@@ -1050,6 +1144,12 @@
                 if (this.mesh) {
                     this.mesh.position.copy(this.position);
                     this.mesh.rotation.y = this.direction;
+                    
+                    // Debug logging for movement
+                    const moved = oldPosition.distanceTo(this.position) > 0.01;
+                    if (moved && Math.random() < 0.02) { // Occasional debug output
+                        console.log(`🏍️ Light cycle moving: pos(${this.position.x.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)})`);
+                    }
                 }
                 
                 // Create light trail
@@ -1077,7 +1177,7 @@
                 // Update velocity
                 this.setInitialVelocity();
                 
-                console.log('🏍️ Light cycle turned!');
+                console.log(`🏍️ Light cycle turned! New direction: ${(this.direction * 180 / Math.PI).toFixed(1)}°`);
             }
             
             checkBoundaries() {
@@ -1179,7 +1279,7 @@
                 this.velocity.setLength(Math.random() * 0.3 + 0.2);
                 this.acceleration = new THREE.Vector3();
                 this.maxForce = 0.05;
-                this.maxSpeed = 0.15; // Slightly faster than boids
+                this.maxSpeed = 0.105; // Reduced by 30% to match boid speed reduction
                 this.huntRadius = 4.0;
                 this.color = color || new THREE.Color(0xff0000);
                 this.isGrabbed = false;
@@ -1264,7 +1364,7 @@
                 this.velocity.setLength(Math.random() * 0.5 + 0.5);
                 this.acceleration = new THREE.Vector3();
                 this.maxForce = 0.03;
-                this.maxSpeed = 0.1;
+                this.maxSpeed = 0.07; // Reduced by 30% for better performance
                 this.isGrabbed = false;
                 this.isBeingTossed = false;
                 this.tossStartTime = 0;
@@ -1901,12 +2001,12 @@
             // Initialize spawn timing and start fountain immediately
             window.lastFountainSpawn = 0;
             
-            // Pre-spawn some initial voxels for immediate visual effect
-            for (let i = 0; i < 8; i++) {
+            // Pre-spawn fewer initial voxels for better performance
+            for (let i = 0; i < 4; i++) {
                 setTimeout(() => {
                     spawnFountainVoxel();
-                    if (i === 0) console.log('Fountain system activated - initial voxels spawning');
-                }, i * 150);
+                    if (i === 0) console.log('Fountain system activated - reduced initial spawning for performance');
+                }, i * 200);
             }
             
             // --- REVISED: Create two proxy meshes for holding, one for each hand ---
@@ -1952,91 +2052,170 @@
                 hand.userData.tipPositions = { THUMB: new THREE.Vector3(), INDEX: new THREE.Vector3(), MIDDLE: new THREE.Vector3() };
                 
                 // Create hand model with proper setup for Quest 3
-                const handModel = handModelFactory.createHandModel(hand, "mesh");
-                handModel.visible = true;
-                handModel.scale.setScalar(1.0);
-                hand.add(handModel);
+                try {
+                    const handModel = handModelFactory.createHandModel(hand, "mesh");
+                    if (handModel) {
+                        handModel.visible = true;
+                        handModel.scale.setScalar(1.2); // Slightly larger
+                        hand.add(handModel);
+                        console.log(`Hand model created for hand ${index}`);
+                    } else {
+                        console.warn(`Failed to create hand model for hand ${index}`);
+                    }
+                } catch (error) {
+                    console.error(`Error creating hand model for hand ${index}:`, error);
+                }
                 
-                // Add larger, more visible hand indicators for Quest 3
+                // Add VERY large, bright hand indicators as primary visibility method
                 const handSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.05, 12, 12),
+                    new THREE.SphereGeometry(0.15, 16, 16), // 3x larger
                     new THREE.MeshBasicMaterial({ 
-                        color: index === 0 ? 0x00ff00 : 0x0000ff, 
-                        transparent: true, 
-                        opacity: 0.8,
-                        emissive: index === 0 ? 0x002200 : 0x000022
+                        color: index === 0 ? 0x00ff00 : 0xff0000, // Green/Red for clear distinction
+                        transparent: false, // Solid for maximum visibility
+                        emissive: index === 0 ? 0x008800 : 0x880000,
+                        emissiveIntensity: 0.8
                     })
                 );
                 hand.add(handSphere);
+                hand.userData.handIndicator = handSphere;
                 
-                // Add fingertip indicators
+                // Add large fingertip indicators
                 const fingerSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.02, 8, 8),
+                    new THREE.SphereGeometry(0.08, 12, 12), // 4x larger
                     new THREE.MeshBasicMaterial({ 
                         color: 0xffff00, 
-                        transparent: true, 
-                        opacity: 0.9,
-                        emissive: 0x444400
+                        transparent: false,
+                        emissive: 0x888800,
+                        emissiveIntensity: 1.0
                     })
                 );
                 hand.add(fingerSphere);
                 hand.userData.fingerIndicator = fingerSphere;
                 
+                // Add pulsing effect to hand indicator
+                hand.userData.pulsePhase = Math.random() * Math.PI * 2;
+                
+                // Force hand visibility
+                hand.visible = true;
+                
                 scene.add(hand);
-                console.log(`Hand ${index} setup complete with visual indicators`);
+                console.log(`Hand ${index} setup complete with enhanced visual indicators - hand sphere at (0,0,0) relative to hand position`);
+                
+                // Additional debug: Force add very visible markers to scene directly
+                const debugMarker = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.2, 8, 8),
+                    new THREE.MeshBasicMaterial({
+                        color: index === 0 ? 0x00ff00 : 0xff0000,
+                        emissive: index === 0 ? 0x00ff00 : 0xff0000,
+                        emissiveIntensity: 0.5
+                    })
+                );
+                debugMarker.position.set(index === 0 ? -1 : 1, 1.5, -2); // Fixed positions in front of user
+                scene.add(debugMarker);
+                console.log(`Debug marker added to scene at position:`, debugMarker.position);
             });
             
             // No controller setup needed for hand-only experience
 
             // Add VR session start/end handlers to control user position
             renderer.xr.addEventListener('sessionstart', () => {
-                // Hide ALL UI elements in VR to fix transparent box issue
+                console.log('VR session starting - hiding all UI elements...');
+                
+                // Hide ALL possible UI elements in VR to fix dark overlay issue
                 const infoDiv = document.getElementById('info');
                 const vrButton = document.querySelector('#vr-button');
+                const vrButtonAlt = document.querySelector('button'); // Alternative VR button selector
                 const allDivs = document.querySelectorAll('div');
+                const allButtons = document.querySelectorAll('button');
+                const allCanvases = document.querySelectorAll('canvas');
                 
-                if (infoDiv) {
-                    infoDiv.style.display = 'none';
-                    infoDiv.style.visibility = 'hidden';
-                    infoDiv.style.opacity = '0';
-                }
-                if (vrButton) {
-                    vrButton.style.display = 'none';
-                    vrButton.style.visibility = 'hidden';
-                }
-                
-                // Hide any other UI elements that might cause transparent overlay
-                allDivs.forEach(div => {
-                    if (div.style.position === 'absolute' || div.style.position === 'fixed') {
-                        div.style.display = 'none';
-                        div.style.visibility = 'hidden';
-                        div.style.opacity = '0';
+                // Hide main UI elements
+                [infoDiv, vrButton, vrButtonAlt].forEach(element => {
+                    if (element) {
+                        element.style.display = 'none !important';
+                        element.style.visibility = 'hidden !important';
+                        element.style.opacity = '0 !important';
+                        element.style.pointerEvents = 'none !important';
+                        element.style.zIndex = '-9999 !important';
+                        console.log('Hidden element:', element.tagName, element.id || element.className);
                     }
                 });
+                
+                // Hide all positioned divs and buttons
+                [...allDivs, ...allButtons].forEach(element => {
+                    if (element) {
+                        const computedStyle = window.getComputedStyle(element);
+                        const isPositioned = computedStyle.position === 'absolute' || 
+                                           computedStyle.position === 'fixed' ||
+                                           computedStyle.position === 'relative';
+                        
+                        if (isPositioned || element.tagName.toLowerCase() === 'button') {
+                            element.style.display = 'none !important';
+                            element.style.visibility = 'hidden !important';
+                            element.style.opacity = '0 !important';
+                            element.style.pointerEvents = 'none !important';
+                            element.style.zIndex = '-9999 !important';
+                            console.log('Hidden positioned/button element:', element.tagName, element.id || element.className);
+                        }
+                    }
+                });
+                
+                // Ensure no overlays on any canvas elements except the main renderer
+                allCanvases.forEach((canvas, index) => {
+                    if (canvas !== renderer.domElement) {
+                        canvas.style.display = 'none !important';
+                        canvas.style.visibility = 'hidden !important';
+                        console.log(`Hidden extra canvas ${index}`);
+                    }
+                });
+                
+                // Extra aggressive hiding - target any element with background or overlay properties
+                document.querySelectorAll('*').forEach(element => {
+                    const computedStyle = window.getComputedStyle(element);
+                    const hasBackground = computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && 
+                                         computedStyle.backgroundColor !== 'transparent';
+                    const hasOverlay = computedStyle.zIndex > 0;
+                    
+                    if ((hasBackground || hasOverlay) && element !== document.body && element !== document.documentElement) {
+                        element.style.display = 'none !important';
+                        element.style.visibility = 'hidden !important';
+                        element.style.opacity = '0 !important';
+                    }
+                });
+                
+                // Add VR class to body for CSS-based hiding
+                document.body.classList.add('vr-active');
                 
                 // Offset the user position when entering VR with proper floor height
                 const offsetPosition = new THREE.Vector3(8, 1.8, 8); // Proper standing height
                 scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
-                console.log('VR session started - all UI hidden, user positioned above ground level');
+                console.log('VR session started - comprehensive UI hiding complete, user positioned above ground level');
             });
             
             renderer.xr.addEventListener('sessionend', () => {
+                console.log('VR session ended - restoring UI elements...');
+                
                 // Show UI elements when exiting VR
                 const infoDiv = document.getElementById('info');
                 const vrButton = document.querySelector('#vr-button');
+                const vrButtonAlt = document.querySelector('button');
                 
-                if (infoDiv) {
-                    infoDiv.style.display = 'block';
-                    infoDiv.style.visibility = 'visible';
-                    infoDiv.style.opacity = '1';
-                }
-                if (vrButton) {
-                    vrButton.style.display = 'block';
-                    vrButton.style.visibility = 'visible';
-                }
+                [infoDiv, vrButton, vrButtonAlt].forEach(element => {
+                    if (element && element.tagName.toLowerCase() !== 'canvas') {
+                        element.style.display = '';
+                        element.style.visibility = '';
+                        element.style.opacity = '';
+                        element.style.pointerEvents = '';
+                        element.style.zIndex = '';
+                    }
+                });
+                
+                // Remove VR class from body
+                document.body.classList.remove('vr-active');
                 
                 // Reset scene position when exiting VR
                 scene.position.set(0, 0, 0);
+                console.log('UI elements restored after VR session');
             });
 
             renderer.setAnimationLoop(() => { update(); render(); });
@@ -2776,6 +2955,18 @@
                     hand.userData.tipPositions.INDEX.copy(indexTip);
                     hand.userData.tipPositions.MIDDLE.copy(middleTip);
                     
+                    // Update finger indicator position for better hand visibility
+                    if (hand.userData.fingerIndicator) {
+                        hand.userData.fingerIndicator.position.copy(indexTip);
+                        hand.userData.fingerIndicator.position.sub(hand.position);
+                    }
+                    
+                    // Update hand indicator with pulsing effect
+                    if (hand.userData.handIndicator && hand.userData.pulsePhase !== undefined) {
+                        const pulseScale = 1.0 + Math.sin(clock.getElapsedTime() * 3.0 + hand.userData.pulsePhase) * 0.3;
+                        hand.userData.handIndicator.scale.setScalar(pulseScale);
+                    }
+                    
                     // Calculate hand velocity
                     hand.userData.velocity.subVectors(hand.userData.tipPositions.INDEX, hand.userData.lastPosition);
                     hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
@@ -3020,10 +3211,15 @@
         
         function updateFountainVoxels(elapsedTime, deltaTime) {
             try {
-                // Spawn new voxels
+                // Spawn new voxels more frequently
                 if (elapsedTime - window.lastFountainSpawn > (1.0 / fountainSpawnRate)) {
                     spawnFountainVoxel();
                     window.lastFountainSpawn = elapsedTime;
+                    
+                    // Occasional fountain activity log
+                    if (Math.random() < 0.1) {
+                        console.log(`⛲ Fountain spawning voxel - active count: ${fountainVoxels.filter(v => v?.active).length}`);
+                    }
                 }
                 
                 // Update existing voxels
