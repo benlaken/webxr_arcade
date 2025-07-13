@@ -75,8 +75,8 @@
 
         const initialBoidCount = 25; // Further reduced by 50% for better performance
         const interactiveVoxelCount = 0; // Replaced with fountain system
-        const fountainVoxelCount = 15; // Drastically reduced for Quest 3 performance
-        const fountainSpawnRate = 1; // Much slower spawn rate for Quest 3
+        const fountainVoxelCount = 30; // Increased for better fountain visibility in VR
+        const fountainSpawnRate = 4; // Much faster spawn rate for dramatic VR fountain effect
         const voxelLifetime = 8; // Shorter lifetime for better performance
         const boundSize = 20;
         
@@ -93,10 +93,10 @@
         // Battle Zone tank system
         let tanks = [];
         let projectiles = [];
-        const TANK_COUNT = 4; // Further reduced for Quest 3 performance
-        const BATTLEFIELD_MIN_DISTANCE = 25; // Minimum distance from user
-        const BATTLEFIELD_MAX_DISTANCE = 60; // Smaller battlefield for better performance
-        const TANK_SPEED = 1.2; // Increased for more visible movement
+        const TANK_COUNT = 8; // Increased for more dramatic tank battles
+        const BATTLEFIELD_MIN_DISTANCE = 12; // Much closer for VR visibility
+        const BATTLEFIELD_MAX_DISTANCE = 25; // Much closer battlefield for visibility
+        const TANK_SPEED = 3.0; // Much faster for dramatic VR battles
         const PROJECTILE_SPEED = 4.0; // Faster projectiles
         const TANK_FIRE_RATE = 0.8; // Increased fire rate for more action
         const TANK_DETECTION_RANGE = 18; // Increased detection range
@@ -122,7 +122,7 @@
         let lightCycles = [];
         let lightTrails = [];
         const LIGHT_CYCLE_COUNT = 2;
-        const CYCLE_SPEED = 4.0;
+        const CYCLE_SPEED = 12.0; // Much faster for better visibility in VR
         const CYCLE_MIN_DISTANCE = 22; // Minimum distance from user
         const CYCLE_MAX_DISTANCE = 60; // Maximum racing area
         const TRAIL_SEGMENT_LENGTH = 0.5; // Distance between trail segments
@@ -165,13 +165,14 @@
             createMesh() {
                 const tankGroup = new THREE.Group();
                 
-                // Tank body (wireframe box)
-                const bodyGeometry = new THREE.BoxGeometry(1.2, 0.8, 2.0);
+                // Tank body (larger wireframe box for VR visibility)
+                const bodyGeometry = new THREE.BoxGeometry(2.4, 1.6, 4.0); // 2x larger for VR
                 const bodyMaterial = new THREE.MeshBasicMaterial({ 
                     color: this.team === 0 ? 0x00ff00 : 0xff0000,
                     wireframe: true,
-                    transparent: true,
-                    opacity: 0.8
+                    transparent: false, // Solid for better visibility
+                    opacity: 1.0,
+                    emissive: this.team === 0 ? 0x004400 : 0x440000 // Emissive glow
                 });
                 const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
                 body.position.y = 0.4;
@@ -211,10 +212,11 @@
             generatePatrolTarget() {
                 const angle = Math.random() * Math.PI * 2;
                 const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
+                // Generate patrol targets relative to VR user position (8, 1.8, 8)
                 return new THREE.Vector3(
-                    Math.cos(angle) * distance,
-                    0,
-                    Math.sin(angle) * distance
+                    8 + Math.cos(angle) * distance,
+                    0.5, // Slightly above ground
+                    8 + Math.sin(angle) * distance
                 );
             }
             
@@ -441,10 +443,10 @@
         // --- Sky Asteroids Classes ---
         class Star {
             constructor() {
-                // Adjust position for VR scene offset (8, 1.8, 8)
+                // Adjust position for VR scene offset (8, 1.8, 8) - stars at highest layer
                 this.position = new THREE.Vector3(
                     8 + (Math.random() - 0.5) * SKY_RADIUS * 2,
-                    1.8 + SKY_HEIGHT + Math.random() * 20,
+                    1.8 + SKY_HEIGHT + 25 + Math.random() * 15, // Much higher than asteroids (Y=35-50)
                     8 + (Math.random() - 0.5) * SKY_RADIUS * 2
                 );
                 this.brightness = Math.random() * 0.8 + 0.2;
@@ -1016,10 +1018,11 @@
         // --- Tron Light Cycle Classes ---
         class LightCycle {
             constructor(teamColor, startPosition) {
+                // Adjust position for VR scene offset (8, 1.8, 8) like other elements
                 this.position = startPosition || new THREE.Vector3(
-                    CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE),
+                    8 + CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE),
                     0.5, // Higher above ground to ensure visibility
-                    CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE)
+                    8 + CYCLE_MIN_DISTANCE + Math.random() * (CYCLE_MAX_DISTANCE - CYCLE_MIN_DISTANCE)
                 );
                 this.velocity = new THREE.Vector3();
                 this.direction = Math.random() * Math.PI * 2;
@@ -1145,7 +1148,7 @@
                     // Debug logging for movement
                     const moved = oldPosition.distanceTo(this.position) > 0.01;
                     if (moved && Math.random() < 0.02) { // Occasional debug output
-                        console.log(`🏍️ Light cycle moving: pos(${this.position.x.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)})`);
+                        console.log(`🏍️ Light cycle moving: pos(${this.position.x.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) speed=${this.speed} direction=${this.direction.toFixed(2)}`);
                     }
                 }
                 
@@ -1178,20 +1181,24 @@
             }
             
             checkBoundaries() {
-                const distanceFromCenter = Math.sqrt(this.position.x * this.position.x + this.position.z * this.position.z);
+                // Account for VR scene offset (8, 1.8, 8) - measure distance from VR user position
+                const userX = 8, userZ = 8; // VR user position after scene offset
+                const distanceFromUser = Math.sqrt((this.position.x - userX) * (this.position.x - userX) + (this.position.z - userZ) * (this.position.z - userZ));
                 
                 // If too close to user, turn away
-                if (distanceFromCenter < CYCLE_MIN_DISTANCE) {
-                    const awayFromCenter = Math.atan2(this.position.z, this.position.x);
-                    this.direction = awayFromCenter;
+                if (distanceFromUser < CYCLE_MIN_DISTANCE) {
+                    const awayFromUser = Math.atan2(this.position.z - userZ, this.position.x - userX);
+                    this.direction = awayFromUser;
                     this.setInitialVelocity();
+                    console.log('🏍️ Light cycle turning away from user');
                 }
                 
-                // If too far out, turn toward center
-                if (distanceFromCenter > CYCLE_MAX_DISTANCE) {
-                    const towardCenter = Math.atan2(-this.position.z, -this.position.x);
-                    this.direction = towardCenter + (Math.random() - 0.5) * Math.PI / 2; // Add some randomness
+                // If too far out, turn toward user area
+                if (distanceFromUser > CYCLE_MAX_DISTANCE) {
+                    const towardUser = Math.atan2(userZ - this.position.z, userX - this.position.x);
+                    this.direction = towardUser + (Math.random() - 0.5) * Math.PI / 2; // Add some randomness
                     this.setInitialVelocity();
+                    console.log('🏍️ Light cycle turning toward user area');
                 }
             }
             
@@ -1581,7 +1588,7 @@
                 
                 if (this.position.x > halfBound) this.velocity.x -= turnFactor;
                 if (this.position.x < -halfBound) this.velocity.x += turnFactor;
-                if (this.position.y > boundSize) this.velocity.y -= turnFactor;
+                if (this.position.y > 8) this.velocity.y -= turnFactor; // Max Y=8, well below asteroids at Y=11.8
                 if (this.position.y < 0.1) this.velocity.y += turnFactor;
                 if (this.position.z > halfBound) this.velocity.z -= turnFactor;
                 if (this.position.z < -halfBound) this.velocity.z += turnFactor;
@@ -1603,15 +1610,21 @@
             renderer.xr.enabled = true;
             
             // Set VR reference space with offset to spawn user away from trees
-            renderer.xr.setReferenceSpaceType('local');
+            renderer.xr.setReferenceSpaceType('local-floor'); // Better for hand tracking
             
             document.body.appendChild(renderer.domElement);
             
-            // Check WebXR support
+            // Check WebXR support with hand tracking
             if ('xr' in navigator) {
                 navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
                     if (supported) {
-                        document.body.appendChild(VRButton.createButton(renderer));
+                        // Create custom VR button with hand tracking support
+                        const vrButton = VRButton.createButton(renderer, {
+                            requiredFeatures: [],
+                            optionalFeatures: ['hand-tracking', 'local-floor']
+                        });
+                        document.body.appendChild(vrButton);
+                        console.log('VR button created with hand tracking support');
                     } else {
                         console.log('WebXR VR not supported on this device');
                         addFallbackControls();
@@ -2093,9 +2106,9 @@
                 // Force hand visibility
                 hand.visible = true;
                 
-                // Add hands to camera instead of scene so they stay with user in VR
-                camera.add(hand);
-                console.log(`Hand ${index} setup complete and added to camera - will follow user position`);
+                // Add hands to scene for Quest 3 hand tracking compatibility
+                scene.add(hand);
+                console.log(`Hand ${index} setup complete and added to scene - Quest 3 tracking enabled`);
                 
                 // Additional debug: Add visible markers that follow the camera/user
                 const debugMarker = new THREE.Mesh(
@@ -2252,10 +2265,11 @@
                 const angle = (i / TANK_COUNT) * Math.PI * 2;
                 const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
                 
+                // Position tanks relative to VR user position (8, 1.8, 8)
                 const position = new THREE.Vector3(
-                    Math.cos(angle) * distance,
-                    0,
-                    Math.sin(angle) * distance
+                    8 + Math.cos(angle) * distance,
+                    0.5, // Slightly above ground for visibility
+                    8 + Math.sin(angle) * distance
                 );
                 
                 const tank = new BattleTank(position, team);
@@ -2303,10 +2317,11 @@
                                 const angle = Math.random() * Math.PI * 2;
                                 const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
                                 
+                                // Respawn tanks relative to VR user position (8, 1.8, 8)
                                 const position = new THREE.Vector3(
-                                    Math.cos(angle) * distance,
-                                    0,
-                                    Math.sin(angle) * distance
+                                    8 + Math.cos(angle) * distance,
+                                    0.5, // Slightly above ground for visibility
+                                    8 + Math.sin(angle) * distance
                                 );
                                 
                                 const newTank = new BattleTank(position, team);
@@ -3247,11 +3262,9 @@
                 fountainVoxels.forEach((voxel, index) => {
                     if (!voxel) return;
                     
-                    // Simplified physics for Quest 3 performance
-                    if (frameCount % 3 === 0) { // Update physics every 3rd frame
-                        voxel.velocity.y -= 12.0 * deltaTime; // Compensate for lower update rate
-                        voxel.position.add(voxel.velocity.clone().multiplyScalar(deltaTime * 3));
-                    }
+                    // Smooth physics for better VR fountain visibility
+                    voxel.velocity.y -= 15.0 * deltaTime; // Stronger gravity for dramatic arcs
+                    voxel.position.add(voxel.velocity.clone().multiplyScalar(deltaTime));
                     
                     // Age the voxel
                     voxel.age += deltaTime;
@@ -3284,10 +3297,10 @@
                     fountainVoxels[0] = null;
                 }
                 
-                // Create new voxel with fountain physics
+                // Create new voxel with dramatic fountain physics for VR visibility
                 const angle = Math.random() * Math.PI * 2;
-                const speed = 1.5 + Math.random() * 2.0;
-                const upwardSpeed = 2.0 + Math.random() * 2.5;
+                const speed = 4.0 + Math.random() * 4.0; // Much faster horizontal speed (4-8)
+                const upwardSpeed = 6.0 + Math.random() * 6.0; // Much faster upward speed (6-12)
                 
                 const newVoxel = {
                     position: window.fountainPosition.clone(),
