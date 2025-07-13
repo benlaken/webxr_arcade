@@ -52,14 +52,14 @@
         let lastGameOfLifeUpdate = 0;
         const GRID_SIZE_X = 16; // Horizontal panels
         const GRID_SIZE_Y = 80; // Vertical panels (covering full monolith from top to floor)
-        const GAME_OF_LIFE_SPEED = 0.5; // Updates per second
+        const GAME_OF_LIFE_SPEED = 0.3; // Updates per second (reduced for Quest performance)
         const REVIVAL_TIME = 3; 
         const SHAKE_THRESHOLD = 0.8; // Reduced shake intensity needed to create predator
 
-        const initialBoidCount = 100;
+        const initialBoidCount = 50; // Reduced for Quest performance
         const interactiveVoxelCount = 0; // Replaced with fountain system
-        const fountainVoxelCount = 200; // Max voxels in fountain at once
-        const fountainSpawnRate = 6; // Voxels per second - more active fountain
+        const fountainVoxelCount = 100; // Max voxels in fountain at once (reduced for performance)
+        const fountainSpawnRate = 3; // Voxels per second (reduced for Quest performance)
         const voxelLifetime = 15; // Seconds before voxels fade away
         const boundSize = 20;
         
@@ -71,12 +71,12 @@
         
         // Performance optimization variables
         let frameCount = 0;
-        const OPTIMIZATION_INTERVAL = 10; // Update every 10 frames
+        const OPTIMIZATION_INTERVAL = 15; // Update every 15 frames (increased for Quest performance)
         
         // Battle Zone tank system
         let tanks = [];
         let projectiles = [];
-        const TANK_COUNT = 12;
+        const TANK_COUNT = 8; // Reduced for Quest performance
         const BATTLEFIELD_MIN_DISTANCE = 25; // Minimum distance from user
         const BATTLEFIELD_MAX_DISTANCE = 80; // Maximum distance for tank spawning
         const TANK_SPEED = 0.8;
@@ -90,8 +90,8 @@
         let spaceShips = [];
         let spaceBullets = [];
         let shootingStars = [];
-        const STAR_COUNT = 200;
-        const ASTEROID_COUNT = 8;
+        const STAR_COUNT = 100; // Reduced for Quest performance
+        const ASTEROID_COUNT = 6; // Reduced for Quest performance
         const SPACESHIP_COUNT = 3;
         const SKY_HEIGHT = 30; // Height above user for sky battle
         const SKY_RADIUS = 50; // Radius of sky battle area
@@ -1463,7 +1463,7 @@
             clock = new THREE.Clock();
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(8, 1.6, 8); // Move user away from central tree
+            camera.position.set(8, 2.0, 8); // Move user away from central tree with proper VR height
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1920,10 +1920,10 @@
                 const infoDiv = document.getElementById('info');
                 if (infoDiv) infoDiv.style.display = 'none';
                 
-                // Offset the user position when entering VR
-                const offsetPosition = new THREE.Vector3(8, 0, 8);
-                renderer.xr.getCamera().position.copy(offsetPosition);
+                // Offset the user position when entering VR with proper floor height
+                const offsetPosition = new THREE.Vector3(8, 1.8, 8); // Proper standing height
                 scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
+                console.log('VR session started - user positioned above ground level');
             });
             
             renderer.xr.addEventListener('sessionend', () => {
@@ -1965,7 +1965,7 @@
             try {
                 if (!position) return;
                 
-                const particleCount = 15;
+                const particleCount = 8; // Reduced for Quest performance
                 for (let i = 0; i < particleCount; i++) {
                     const particle = {
                         position: position.clone(),
@@ -2054,7 +2054,7 @@
             try {
                 if (!position) return;
                 
-                const particleCount = 10;
+                const particleCount = 6; // Reduced for Quest performance
                 for (let i = 0; i < particleCount; i++) {
                     const particle = {
                         position: position.clone(),
@@ -2409,7 +2409,7 @@
         
         function createForceBlastEffect(center, direction) {
             // Create expanding ring of particles to show force blast
-            const particleCount = 30;
+            const particleCount = 15; // Reduced for Quest performance
             for (let i = 0; i < particleCount; i++) {
                 const angle = (i / particleCount) * Math.PI * 2;
                 const radius = 0.5;
@@ -2683,7 +2683,7 @@
             try {
                 if (!position) return;
                 
-                const particleCount = 20;
+                const particleCount = 10; // Reduced for Quest performance
                 for (let i = 0; i < particleCount; i++) {
                     const particle = {
                         position: position.clone(),
