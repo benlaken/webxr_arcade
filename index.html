@@ -77,13 +77,13 @@
         // Battle Zone tank system
         let tanks = [];
         let projectiles = [];
-        const TANK_COUNT = 8; // Reduced for Quest performance
+        const TANK_COUNT = 4; // Further reduced for Quest 3 performance
         const BATTLEFIELD_MIN_DISTANCE = 25; // Minimum distance from user
-        const BATTLEFIELD_MAX_DISTANCE = 80; // Maximum distance for tank spawning
-        const TANK_SPEED = 0.8;
-        const PROJECTILE_SPEED = 3.0;
-        const TANK_FIRE_RATE = 0.3; // Shots per second
-        const TANK_DETECTION_RANGE = 15;
+        const BATTLEFIELD_MAX_DISTANCE = 60; // Smaller battlefield for better performance
+        const TANK_SPEED = 1.2; // Increased for more visible movement
+        const PROJECTILE_SPEED = 4.0; // Faster projectiles
+        const TANK_FIRE_RATE = 0.8; // Increased fire rate for more action
+        const TANK_DETECTION_RANGE = 18; // Increased detection range
         
         // Sky Asteroids system
         let stars = [];
@@ -93,7 +93,7 @@
         let shootingStars = [];
         const STAR_COUNT = 100; // Reduced for Quest performance
         const ASTEROID_COUNT = 6; // Reduced for Quest performance
-        const SPACESHIP_COUNT = 3;
+        const SPACESHIP_COUNT = 1; // Single active hunter spaceship
         const SKY_HEIGHT = 30; // Height above user for sky battle
         const SKY_RADIUS = 50; // Radius of sky battle area
         const ASTEROID_SPEED = 1.0;
@@ -141,6 +141,7 @@
                 this.state = 'patrol'; // patrol, engage, retreat
                 this.patrolTarget = this.generatePatrolTarget();
                 this.maxSpeed = TANK_SPEED;
+                this.isMoving = false; // Track movement state for debugging
                 
                 this.createMesh();
             }
@@ -217,6 +218,15 @@
                 if (this.mesh) {
                     this.mesh.position.copy(this.position);
                     this.mesh.rotation.y = this.rotation;
+                    
+                    // Track if tank is actually moving
+                    const wasMoving = this.isMoving;
+                    this.isMoving = this.velocity.length() > 0.1;
+                    
+                    // Occasional debug output for tank activity
+                    if (!wasMoving && this.isMoving && Math.random() < 0.1) {
+                        console.log(`🚜 Tank (team ${this.team}) moving: ${this.state}`);
+                    }
                 }
                 
                 // Update turret rotation towards target
@@ -262,29 +272,37 @@
                 let targetPos = this.patrolTarget;
                 
                 if (this.state === 'engage' && this.target) {
-                    // Move towards enemy but maintain some distance
+                    // More aggressive movement towards enemy
                     const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
                     const distance = toTarget.length();
                     
-                    if (distance > 8.0) {
+                    if (distance > 10.0) {
+                        // Move directly towards target
                         targetPos = this.target.position;
-                    } else if (distance < 5.0) {
-                        // Retreat slightly
-                        targetPos = new THREE.Vector3().subVectors(this.position, toTarget.normalize().multiplyScalar(3));
+                    } else if (distance < 6.0) {
+                        // Retreat slightly to maintain firing distance
+                        targetPos = new THREE.Vector3().subVectors(this.position, toTarget.normalize().multiplyScalar(4));
                     } else {
-                        // Circle around target
+                        // Circle around target for tactical positioning
                         const perpendicular = new THREE.Vector3(-toTarget.z, 0, toTarget.x).normalize();
-                        targetPos = new THREE.Vector3().addVectors(this.position, perpendicular.multiplyScalar(2));
+                        targetPos = new THREE.Vector3().addVectors(this.position, perpendicular.multiplyScalar(3));
+                    }
+                } else {
+                    // More active patrolling when no target
+                    const distanceToPatrol = this.position.distanceTo(this.patrolTarget);
+                    if (distanceToPatrol < 3.0) {
+                        this.patrolTarget = this.generatePatrolTarget();
                     }
                 }
                 
-                // Move towards target position
+                // Move towards target position with improved movement
                 const direction = new THREE.Vector3().subVectors(targetPos, this.position);
                 direction.y = 0; // Keep on ground
                 
-                if (direction.length() > 0.1) {
+                if (direction.length() > 0.2) {
                     direction.normalize();
-                    this.velocity.lerp(direction.multiplyScalar(this.maxSpeed), deltaTime * 2.0);
+                    const speedMultiplier = this.state === 'engage' ? 1.2 : 0.8; // Faster when engaging
+                    this.velocity.lerp(direction.multiplyScalar(this.maxSpeed * speedMultiplier), deltaTime * 3.0);
                     this.rotation = Math.atan2(this.velocity.x, this.velocity.z);
                 }
                 
@@ -317,7 +335,7 @@
                 const projectile = new Projectile(barrelEnd.clone(), direction, this.team, this);
                 projectiles.push(projectile);
                 
-                console.log('🔥 Tank fired!');
+                console.log(`🔥 Tank (team ${this.team}) fired at enemy!`);
             }
             
             takeDamage() {
@@ -625,9 +643,10 @@
             
             findTarget() {
                 let closestAsteroid = null;
-                let closestDistance = 20; // Detection range
+                let closestDistance = 30; // Increased detection range
                 
                 for (const asteroid of asteroids) {
+                    if (!asteroid || asteroid.health <= 0) continue;
                     const distance = this.position.distanceTo(asteroid.position);
                     if (distance < closestDistance) {
                         closestAsteroid = asteroid;
@@ -650,30 +669,29 @@
                     
                     this.angularVelocity += Math.sign(angleDiff) * 0.1;
                     
-                    // Thrust towards target if facing roughly the right direction
-                    if (Math.abs(angleDiff) < Math.PI / 4) {
-                        const thrustForce = new THREE.Vector3(
-                            Math.sin(this.rotation),
-                            0,
-                            Math.cos(this.rotation)
-                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime);
-                        
-                        this.velocity.add(thrustForce);
-                        this.thrust = true;
-                    } else {
-                        this.thrust = false;
-                    }
+                    // Always thrust towards target - more aggressive behavior
+                    const thrustForce = new THREE.Vector3(
+                        Math.sin(this.rotation),
+                        0,
+                        Math.cos(this.rotation)
+                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 1.5); // Increased thrust
+                    
+                    this.velocity.add(thrustForce);
+                    this.thrust = true;
+                    
+                    // More aggressive turning
+                    this.angularVelocity += Math.sign(angleDiff) * 0.2;
                 } else {
-                    // Random movement when no target
-                    if (Math.random() < 0.01) {
-                        this.angularVelocity += (Math.random() - 0.5) * 0.5;
+                    // More active patrol when no target
+                    if (Math.random() < 0.02) {
+                        this.angularVelocity += (Math.random() - 0.5) * 0.8;
                     }
-                    if (Math.random() < 0.005) {
+                    if (Math.random() < 0.01) {
                         const thrustForce = new THREE.Vector3(
                             Math.sin(this.rotation),
                             0,
                             Math.cos(this.rotation)
-                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 0.5);
+                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 0.8);
                         
                         this.velocity.add(thrustForce);
                     }
@@ -682,18 +700,24 @@
             
             tryFire(elapsedTime) {
                 if (!this.target) return;
-                if (elapsedTime - this.lastFireTime < 0.5) return; // Fire rate limit
+                if (elapsedTime - this.lastFireTime < 0.3) return; // Faster fire rate
                 
                 const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
-                const targetAngle = Math.atan2(toTarget.x, toTarget.z);
-                let angleDiff = targetAngle - this.rotation;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                const distance = toTarget.length();
                 
-                // Only fire if roughly aimed at target
-                if (Math.abs(angleDiff) < Math.PI / 8) {
-                    this.fire();
-                    this.lastFireTime = elapsedTime;
+                // Fire if target is within range and roughly aimed
+                if (distance < 15) { // Increased firing range
+                    const targetAngle = Math.atan2(toTarget.x, toTarget.z);
+                    let angleDiff = targetAngle - this.rotation;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    
+                    // More lenient aiming requirement
+                    if (Math.abs(angleDiff) < Math.PI / 6) {
+                        this.fire();
+                        this.lastFireTime = elapsedTime;
+                        console.log('🚀 Spaceship firing at asteroid!');
+                    }
                 }
             }
             
@@ -2038,7 +2062,7 @@
                 tanks.push(tank);
             }
             
-            console.log(`✅ Created ${TANK_COUNT} tanks for battle!`);
+            console.log(`⚔️ Tank battle initialized: ${TANK_COUNT} tanks ready for combat!`);
         }
         
         function createProjectileExplosion(position) {
@@ -2127,7 +2151,7 @@
                 spaceShips.push(new SpaceShip());
             }
             
-            console.log(`✅ Created ${STAR_COUNT} stars, ${ASTEROID_COUNT} asteroids, and ${SPACESHIP_COUNT} ships!`);
+            console.log(`✅ Sky battle initialized: ${STAR_COUNT} stars, ${ASTEROID_COUNT} asteroids, and ${SPACESHIP_COUNT} hunting ship!`);
         }
         
         function createSpaceExplosion(position) {
