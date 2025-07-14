@@ -10,20 +10,38 @@
         #vr-button { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10; border: 1px solid #fff; background-color: rgba(0,0,0,0.5); color: #fff; padding: 12px 24px; border-radius: 999px; cursor: pointer; font-weight: 600; }
         #vr-button:hover { background-color: rgba(255,255,255,0.2); }
         
-        /* VR Mode - Force hide all potential overlay elements */
-        .vr-active * {
-            display: none !important;
-        }
-        .vr-active canvas {
-            display: block !important;
-        }
-        
-        /* Aggressive overlay prevention */
-        button[data-vr] {
+        /* VR Mode - Specifically target UI elements only, not WebXR internals */
+        .vr-active #info {
             display: none !important;
             visibility: hidden !important;
             opacity: 0 !important;
-            pointer-events: none !important;
+        }
+        .vr-active #vr-button {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        .vr-active #threejs-vr-button {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        .vr-active button {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        .vr-active div:not([id]) {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+        }
+        
+        /* Ensure canvas and WebXR elements remain visible */
+        .vr-active canvas {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
         }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1747,6 +1765,12 @@
                             requiredFeatures: [],
                             optionalFeatures: ['hand-tracking', 'local-floor']
                         });
+                        
+                        // Style VR button to prevent overlay issues
+                        vrButton.style.zIndex = '10';
+                        vrButton.style.position = 'absolute';
+                        vrButton.id = 'threejs-vr-button';
+                        
                         document.body.appendChild(vrButton);
                         console.log('VR button created with hand tracking support');
                     } else {
@@ -2230,9 +2254,9 @@
                 // Force hand visibility
                 hand.visible = true;
                 
-                // Add hands to scene for Quest 3 hand tracking compatibility
-                scene.add(hand);
-                console.log(`Hand ${index} setup complete and added to scene - Quest 3 tracking enabled`);
+                // Add hands to camera to maintain proper positioning relative to head
+                camera.add(hand);
+                console.log(`Hand ${index} setup complete and added to camera - hands follow head position`);
                 
                 // Additional debug: Add visible markers that follow the camera/user
                 const debugMarker = new THREE.Mesh(
@@ -2304,32 +2328,28 @@
                     }
                 });
                 
-                // Nuclear option: Hide EVERYTHING except canvas and essential elements
-                allElements.forEach(element => {
-                    // Skip essential elements
-                    if (element === document.body || 
-                        element === document.documentElement || 
-                        element === document.head ||
-                        element.tagName === 'SCRIPT' ||
-                        element.tagName === 'STYLE' ||
-                        element.tagName === 'META' ||
-                        element.tagName === 'TITLE' ||
-                        element.tagName === 'LINK' ||
-                        element === renderer.domElement ||
-                        element.contains(renderer.domElement)) {
-                        return;
-                    }
-                    
-                    // Hide everything else aggressively
-                    element.style.display = 'none !important';
-                    element.style.visibility = 'hidden !important';
-                    element.style.opacity = '0 !important';
-                    element.style.pointerEvents = 'none !important';
-                    element.style.position = 'absolute !important';
-                    element.style.left = '-9999px !important';
-                    element.style.top = '-9999px !important';
-                    element.style.transform = 'scale(0) !important';
-                    element.style.zIndex = '-9999 !important';
+                // Specifically target known UI elements that could cause overlay issues
+                const problematicElements = [
+                    '#info',
+                    '#vr-button', 
+                    '#threejs-vr-button',
+                    'button',
+                    '.ui-element',
+                    '.overlay',
+                    '.menu',
+                    '.hud'
+                ];
+                
+                problematicElements.forEach(selector => {
+                    const elements = document.querySelectorAll(selector);
+                    elements.forEach(element => {
+                        if (element && element !== renderer.domElement) {
+                            element.style.display = 'none !important';
+                            element.style.visibility = 'hidden !important';
+                            element.style.opacity = '0 !important';
+                            element.style.pointerEvents = 'none !important';
+                        }
+                    });
                 });
                 
                 // Force canvas to be the only visible element
@@ -2340,6 +2360,19 @@
                     renderer.domElement.style.zIndex = '1 !important';
                 }
                 
+                // Additional check: Remove any WebXR button overlays that might persist
+                setTimeout(() => {
+                    const potentialOverlays = document.querySelectorAll('[style*="rgba"], [style*="background"], .xr-button, [class*="vr"], [class*="ar"]');
+                    potentialOverlays.forEach(element => {
+                        if (element !== renderer.domElement && !element.contains(renderer.domElement)) {
+                            element.style.display = 'none !important';
+                            element.style.visibility = 'hidden !important';
+                            element.style.opacity = '0 !important';
+                            console.log('Hidden potential overlay element:', element.className || element.id || element.tagName);
+                        }
+                    });
+                }, 100);
+                
                 // Add VR class to body for CSS-based hiding
                 document.body.classList.add('vr-active');
                 
@@ -2347,7 +2380,7 @@
                 const offsetPosition = new THREE.Vector3(8, 1.8, 8);
                 scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
                 
-                console.log('VR session started - hands attached to camera, scene offset for proper positioning');
+                console.log('VR session started - hands attached to camera for proper head tracking, scene offset for world positioning');
             });
             
             renderer.xr.addEventListener('sessionend', () => {
