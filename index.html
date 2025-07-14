@@ -643,8 +643,8 @@
             createMesh() {
                 const shipGroup = new THREE.Group();
                 
-                // Much larger, very visible triangular ship shape
-                const shipGeometry = new THREE.ConeGeometry(2.0, 6.0, 3); // Even larger for VR visibility
+                // Appropriately sized triangular ship shape for VR
+                const shipGeometry = new THREE.ConeGeometry(1.0, 3.0, 3); // Reasonable size for VR visibility
                 const shipMaterial = new THREE.MeshBasicMaterial({ 
                     color: 0x00ffff,
                     wireframe: true,
@@ -656,8 +656,8 @@
                 ship.rotation.x = Math.PI / 2; // Point forward
                 shipGroup.add(ship);
                 
-                // Add multiple bright markers for maximum visibility
-                const markerGeometry = new THREE.SphereGeometry(1.2, 8, 8); // Larger markers for VR
+                // Add bright markers for visibility
+                const markerGeometry = new THREE.SphereGeometry(0.6, 8, 8); // Moderate markers for VR
                 const markerMaterial = new THREE.MeshBasicMaterial({
                     color: 0xffff00,
                     emissive: 0xffff00,
@@ -669,7 +669,7 @@
                 shipGroup.add(marker);
                 
                 // Add pulsing effect marker
-                const pulseGeometry = new THREE.SphereGeometry(1.0, 8, 8);
+                const pulseGeometry = new THREE.SphereGeometry(0.5, 8, 8);
                 const pulseMaterial = new THREE.MeshBasicMaterial({
                     color: 0xff0080,
                     emissive: 0xff0080,
@@ -737,7 +737,12 @@
             
             findTarget() {
                 let closestAsteroid = null;
-                let closestDistance = 30; // Increased detection range
+                let closestDistance = 40; // Much longer detection range to match firing range
+                
+                // Debug: Check if we have asteroids
+                if (Math.random() < 0.01) {
+                    console.log(`🔍 Spaceship checking ${asteroids.length} asteroids for targets...`);
+                }
                 
                 for (const asteroid of asteroids) {
                     if (!asteroid || asteroid.health <= 0) continue;
@@ -745,6 +750,15 @@
                     if (distance < closestDistance) {
                         closestAsteroid = asteroid;
                         closestDistance = distance;
+                    }
+                }
+                
+                // Debug target acquisition
+                if (this.target !== closestAsteroid) {
+                    if (closestAsteroid) {
+                        console.log(`🎯 Spaceship acquired new target at distance ${closestDistance.toFixed(1)}`);
+                    } else if (this.target) {
+                        console.log(`❌ Spaceship lost target`);
                     }
                 }
                 
@@ -768,13 +782,13 @@
                         Math.sin(this.rotation),
                         0,
                         Math.cos(this.rotation)
-                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 4.0); // Extremely high thrust for dramatic movement
+                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 6.0); // Even higher thrust for dramatic movement
                     
                     this.velocity.add(thrustForce);
                     this.thrust = true;
                     
-                    // More aggressive turning
-                    this.angularVelocity += Math.sign(angleDiff) * 0.2;
+                    // Much more aggressive turning for faster target acquisition
+                    this.angularVelocity += Math.sign(angleDiff) * 0.4;
                 } else {
                     // More active patrol when no target
                     if (Math.random() < 0.02) {
@@ -800,14 +814,14 @@
                 const distance = toTarget.length();
                 
                 // Fire if target is within range and roughly aimed
-                if (distance < 15) { // Increased firing range
+                if (distance < 25) { // Much longer firing range for more action
                     const targetAngle = Math.atan2(toTarget.x, toTarget.z);
                     let angleDiff = targetAngle - this.rotation;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                     
-                    // More lenient aiming requirement
-                    if (Math.abs(angleDiff) < Math.PI / 6) {
+                    // Very lenient aiming requirement for more action
+                    if (Math.abs(angleDiff) < Math.PI / 3) { // 60 degree cone instead of 30
                         this.fire();
                         this.lastFireTime = elapsedTime;
                         console.log(`🚀 Spaceship firing at asteroid! Distance: ${distance.toFixed(1)} units`);
