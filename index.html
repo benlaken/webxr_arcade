@@ -54,7 +54,6 @@
         Pinch voxels to revive • Grab boids to toss • Shake voxels for predators • Make fist and punch to blast!<br>
         <small>Point with right hand for 3 seconds to teleport</small>
     </div>
-    <script src="https://cdn.tailwindcss.com"></script>
 
     <script type="importmap">
         {
@@ -147,6 +146,12 @@
         const TRAIL_LIFETIME = 30; // Longer lifetime for persistent light walls
         const RACE_RESET_TIME = 8; // Seconds before race resets after winner
         
+        // Track dimensions and positioning
+        const TRACK_CENTER_X = -15; // X position of track center
+        const TRACK_CENTER_Z = 15; // Z position of track center  
+        const TRACK_WIDTH = 20; // Width of racing track
+        const TRACK_HEIGHT = 25; // Height of racing track
+        
         // Racing state management
         let raceState = 'racing'; // 'racing', 'victory', 'resetting'
         let raceWinner = null;
@@ -191,7 +196,7 @@
                 
                 // Tank body (larger wireframe box for VR visibility)
                 const bodyGeometry = new THREE.BoxGeometry(2.4, 1.6, 4.0); // 2x larger for VR
-                const bodyMaterial = new THREE.MeshBasicMaterial({ 
+                const bodyMaterial = new THREE.MeshLambertMaterial({ 
                     color: this.team === 0 ? 0x00ff00 : 0xff0000,
                     wireframe: true,
                     transparent: false, // Solid for better visibility
@@ -645,7 +650,7 @@
                 
                 // Appropriately sized triangular ship shape for VR
                 const shipGeometry = new THREE.ConeGeometry(1.0, 3.0, 3); // Reasonable size for VR visibility
-                const shipMaterial = new THREE.MeshBasicMaterial({ 
+                const shipMaterial = new THREE.MeshLambertMaterial({ 
                     color: 0x00ffff,
                     wireframe: true,
                     transparent: true,
@@ -658,7 +663,7 @@
                 
                 // Add bright markers for visibility
                 const markerGeometry = new THREE.SphereGeometry(0.6, 8, 8); // Moderate markers for VR
-                const markerMaterial = new THREE.MeshBasicMaterial({
+                const markerMaterial = new THREE.MeshLambertMaterial({
                     color: 0xffff00,
                     emissive: 0xffff00,
                     transparent: true,
@@ -670,7 +675,7 @@
                 
                 // Add pulsing effect marker
                 const pulseGeometry = new THREE.SphereGeometry(0.5, 8, 8);
-                const pulseMaterial = new THREE.MeshBasicMaterial({
+                const pulseMaterial = new THREE.MeshLambertMaterial({
                     color: 0xff0080,
                     emissive: 0xff0080,
                     transparent: true,
@@ -1088,7 +1093,7 @@
                 
                 // Larger, more visible main body for Quest 3
                 const bodyGeometry = new THREE.BoxGeometry(1.2, 0.6, 3.0);
-                const bodyMaterial = new THREE.MeshBasicMaterial({ 
+                const bodyMaterial = new THREE.MeshLambertMaterial({ 
                     color: this.teamColor,
                     wireframe: true,
                     transparent: true,
@@ -1101,7 +1106,7 @@
                 
                 // Enhanced light strips for better visibility
                 const stripGeometry = new THREE.BoxGeometry(1.3, 0.1, 3.1);
-                const stripMaterial = new THREE.MeshBasicMaterial({ 
+                const stripMaterial = new THREE.MeshLambertMaterial({ 
                     color: this.teamColor,
                     transparent: true,
                     opacity: 1.0,
@@ -1120,7 +1125,7 @@
                 
                 // Larger, more visible wheels
                 const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
-                const wheelMaterial = new THREE.MeshBasicMaterial({ 
+                const wheelMaterial = new THREE.MeshLambertMaterial({ 
                     color: this.teamColor,
                     wireframe: true,
                     transparent: true,
@@ -1140,7 +1145,7 @@
                 
                 // Add bright marker for extra visibility
                 const markerGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-                const markerMaterial = new THREE.MeshBasicMaterial({
+                const markerMaterial = new THREE.MeshLambertMaterial({
                     color: this.teamColor,
                     emissive: this.teamColor,
                     transparent: true,
@@ -1751,705 +1756,762 @@
             }
         }
 
-        init();
-
-        function init() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x101020);
-            clock = new THREE.Clock();
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(8, 2.0, 8); // Move user away from central tree with proper VR height
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true;
+        function addFallbackControls() {
+            const fallbackDiv = document.createElement('div');
+            fallbackDiv.style.position = 'absolute';
+            fallbackDiv.style.bottom = '20px';
+            fallbackDiv.style.left = '50%';
+            fallbackDiv.style.transform = 'translateX(-50%)';
+            fallbackDiv.style.padding = '12px 24px';
+            fallbackDiv.style.backgroundColor = 'rgba(255, 100, 100, 0.8)';
+            fallbackDiv.style.color = 'white';
+            fallbackDiv.style.borderRadius = '8px';
+            fallbackDiv.style.fontSize = '14px';
+            fallbackDiv.textContent = 'VR not supported - use mouse to look around';
+            document.body.appendChild(fallbackDiv);
             
-            // Set VR reference space with offset to spawn user away from trees
-            renderer.xr.setReferenceSpaceType('local-floor'); // Better for hand tracking
-            
-            document.body.appendChild(renderer.domElement);
-            
-            // Check WebXR support with hand tracking
-            if ('xr' in navigator) {
-                navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-                    if (supported) {
-                        // Create custom VR button with hand tracking support
-                        const vrButton = VRButton.createButton(renderer, {
-                            requiredFeatures: [],
-                            optionalFeatures: ['hand-tracking', 'local-floor']
-                        });
-                        
-                        // Style VR button to prevent overlay issues
-                        vrButton.style.zIndex = '10';
-                        vrButton.style.position = 'absolute';
-                        vrButton.id = 'threejs-vr-button';
-                        
-                        document.body.appendChild(vrButton);
-                        console.log('VR button created with hand tracking support');
-                    } else {
-                        console.log('WebXR VR not supported on this device');
-                        addFallbackControls();
-                    }
-                }).catch((err) => {
-                    console.log('WebXR error:', err);
-                    addFallbackControls();
-                });
-            } else {
-                console.log('WebXR not available');
-                addFallbackControls();
-            }
+            // Add basic mouse controls for fallback
+            let mouseX = 0, mouseY = 0;
+            document.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+                camera.position.x = mouseX * 5;
+                camera.position.y = mouseY * 3 + 1.6;
+                camera.lookAt(0, 2, 0);
+            });
+        }
 
-            const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x444444);
+        function createVectorGridGround() {
+            // Create a large Tron-style wireframe grid ground plane
+            const gridSize = 100; // Size of the overall grid
+            const divisions = 50; // Number of grid divisions
+            const gridHelper = new THREE.GridHelper(gridSize, divisions);
+            
+            // Style the grid with retro neon cyan color
+            gridHelper.material.color.setHex(0x00ffff);
+            gridHelper.material.opacity = 0.3;
+            gridHelper.material.transparent = true;
+            gridHelper.position.y = -0.1; // Slightly below ground level
+            
             scene.add(gridHelper);
             
-            // Create multiple Tron-inspired trees
-            createTronTrees();
+            // Add additional crossing lines for enhanced vector graphics look
+            const linesMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x00aaff, 
+                opacity: 0.4, 
+                transparent: true 
+            });
             
-            function createTronTrees() {
-                const treeConfigs = [
-                    // Central tree - tall crystalline structure
-                    {
-                        position: new THREE.Vector3(0, 0, 0),
-                        trunkGeometry: new THREE.CylinderGeometry(0.2, 0.4, 5, 6),
-                        canopyGeometry: new THREE.ConeGeometry(3, 4, 8),
-                        trunkColor: 0x00ffff,
-                        canopyColor: 0x00ff88,
-                        lightColor: 0x00ffaa,
-                        lightIntensity: 6,
-                        trunkHeight: 2.5,
-                        canopyHeight: 6
-                    },
-                    // Pyramid tree - left side
-                    {
-                        position: new THREE.Vector3(-8, 0, -3),
-                        trunkGeometry: new THREE.BoxGeometry(0.6, 3, 0.6),
-                        canopyGeometry: new THREE.TetrahedronGeometry(2.5, 1),
-                        trunkColor: 0xff00ff,
-                        canopyColor: 0xff0088,
-                        lightColor: 0xff00aa,
-                        lightIntensity: 4,
-                        trunkHeight: 1.5,
-                        canopyHeight: 4
-                    },
-                    // Octahedron tree - right side
-                    {
-                        position: new THREE.Vector3(6, 0, -6),
-                        trunkGeometry: new THREE.CylinderGeometry(0.15, 0.25, 4, 8),
-                        canopyGeometry: new THREE.OctahedronGeometry(2.2, 1),
-                        trunkColor: 0x0088ff,
-                        canopyColor: 0x0066ff,
-                        lightColor: 0x0088ff,
-                        lightIntensity: 4,
-                        trunkHeight: 2,
-                        canopyHeight: 4.5
-                    },
-                    // Dodecahedron tree - back left
-                    {
-                        position: new THREE.Vector3(-4, 0, 8),
-                        trunkGeometry: new THREE.CylinderGeometry(0.3, 0.3, 2.5, 12),
-                        canopyGeometry: new THREE.DodecahedronGeometry(2, 0),
-                        trunkColor: 0xffaa00,
-                        canopyColor: 0xff8800,
-                        lightColor: 0xffaa00,
-                        lightIntensity: 3,
-                        trunkHeight: 1.25,
-                        canopyHeight: 3.5
-                    },
-                    // Icosahedron tree - back right  
-                    {
-                        position: new THREE.Vector3(3, 0, 6),
-                        trunkGeometry: new THREE.CylinderGeometry(0.1, 0.2, 3.5, 6),
-                        canopyGeometry: new THREE.IcosahedronGeometry(1.8, 1),
-                        trunkColor: 0x88ff00,
-                        canopyColor: 0x66ff00,
-                        lightColor: 0x88ff00,
-                        lightIntensity: 3,
-                        trunkHeight: 1.75,
-                        canopyHeight: 3.5
-                    }
-                ];
+            // Create major grid lines every 10 units
+            const majorLines = new THREE.Group();
+            const step = gridSize / 10;
+            
+            for (let i = -5; i <= 5; i++) {
+                if (i === 0) continue; // Skip center lines (already handled by GridHelper)
                 
-                treeConfigs.forEach(config => {
-                    const tree = new THREE.Group();
-                    tree.position.copy(config.position);
-                    
-                    // Create trunk
-                    const trunkMat = new THREE.MeshBasicMaterial({ 
-                        color: config.trunkColor, 
-                        transparent: true, 
-                        opacity: 0.3 
-                    });
-                    const trunk = new THREE.Mesh(config.trunkGeometry, trunkMat);
-                    trunk.position.y = config.trunkHeight;
-                    tree.add(trunk);
-                    
-                    // Create canopy
-                    const canopyMat = new THREE.MeshBasicMaterial({ 
-                        color: config.canopyColor, 
-                        transparent: true, 
-                        opacity: 0.25 
-                    });
-                    const canopy = new THREE.Mesh(config.canopyGeometry, canopyMat);
-                    canopy.position.y = config.canopyHeight;
-                    tree.add(canopy);
-                    
-                    // Create wireframe overlays for Tron effect
-                    const wireframeMat = new THREE.MeshBasicMaterial({ 
-                        color: 0xffffff, 
-                        wireframe: true,
-                        transparent: true,
-                        opacity: 0.8
-                    });
-                    const trunkWireframe = new THREE.Mesh(config.trunkGeometry, wireframeMat);
-                    trunkWireframe.position.copy(trunk.position);
-                    tree.add(trunkWireframe);
-                    
-                    const canopyWireframe = new THREE.Mesh(config.canopyGeometry, wireframeMat);
-                    canopyWireframe.position.copy(canopy.position);
-                    tree.add(canopyWireframe);
-                    
-                    // Add glowing light
-                    const treeLight = new THREE.PointLight(config.lightColor, config.lightIntensity, 12);
-                    treeLight.position.y = config.canopyHeight;
-                    tree.add(treeLight);
-                    
-                    // Add to obstacles array
-                    obstacles.push(
-                        { position: new THREE.Vector3().copy(config.position).add(new THREE.Vector3(0, config.trunkHeight, 0)), radius: 0.5 },
-                        { position: new THREE.Vector3().copy(config.position).add(new THREE.Vector3(0, config.canopyHeight, 0)), radius: 2.5 }
-                    );
-                    
-                    scene.add(tree);
-                });
+                // Horizontal major lines
+                const hGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(-gridSize/2, 0, i * step),
+                    new THREE.Vector3(gridSize/2, 0, i * step)
+                ]);
+                const hLine = new THREE.Line(hGeometry, new THREE.LineBasicMaterial({ 
+                    color: 0x00ffaa, 
+                    opacity: 0.6, 
+                    transparent: true 
+                }));
+                majorLines.add(hLine);
                 
-                // Create ornamental fountain
-                createFountain();
-                
-                // Create Game of Life monolith
-                createGameOfLifeMonolith();
-                
-                // Initialize Battle Zone tank battle
-                initializeTankBattle();
-                
-                // Initialize sky battle and starfield
-                initializeSkyBattle();
-                
-                // Initialize Tron light cycles
-                initializeLightCycles();
-                
-                // Initialize teleportation system
-                initializeTeleportSystem();
+                // Vertical major lines  
+                const vGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(i * step, 0, -gridSize/2),
+                    new THREE.Vector3(i * step, 0, gridSize/2)
+                ]);
+                const vLine = new THREE.Line(vGeometry, new THREE.LineBasicMaterial({ 
+                    color: 0x00ffaa, 
+                    opacity: 0.6, 
+                    transparent: true 
+                }));
+                majorLines.add(vLine);
             }
             
+            majorLines.position.y = -0.05; // Slightly above the basic grid
+            scene.add(majorLines);
             
-            function createFountain() {
-                const fountain = new THREE.Group();
-                fountain.position.set(-2, 0, 2); // Position near user spawn
+            // Add animated pulse lines for extra retro effect
+            const pulseGroup = new THREE.Group();
+            
+            // Center cross-hair lines that pulse
+            const centerHGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-gridSize/2, 0, 0),
+                new THREE.Vector3(gridSize/2, 0, 0)
+            ]);
+            const centerHLine = new THREE.Line(centerHGeometry, new THREE.LineBasicMaterial({ 
+                color: 0x00ffff, 
+                opacity: 0.8, 
+                transparent: true 
+            }));
+            
+            const centerVGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, -gridSize/2),
+                new THREE.Vector3(0, 0, gridSize/2)
+            ]);
+            const centerVLine = new THREE.Line(centerVGeometry, new THREE.LineBasicMaterial({ 
+                color: 0x00ffff, 
+                opacity: 0.8, 
+                transparent: true 
+            }));
+            
+            pulseGroup.add(centerHLine);
+            pulseGroup.add(centerVLine);
+            pulseGroup.position.y = 0.05; // Above other grid lines
+            pulseGroup.name = 'gridPulseLines'; // For animation reference
+            scene.add(pulseGroup);
+            
+            console.log('🌐 Created vector graphics grid ground');
+        }
+
+        function createTronTrees() {
+            const treeConfigs = [
+                // Central tree - tall crystalline structure
+                {
+                    position: new THREE.Vector3(0, 0, 0),
+                    trunkGeometry: new THREE.CylinderGeometry(0.2, 0.4, 5, 6),
+                    canopyGeometry: new THREE.ConeGeometry(3, 4, 8),
+                    trunkColor: 0x00ffff,
+                    canopyColor: 0x00ff88,
+                    lightColor: 0x00ffaa,
+                    lightIntensity: 6,
+                    trunkHeight: 2.5,
+                    canopyHeight: 6
+                },
+                // Pyramid tree - left side
+                {
+                    position: new THREE.Vector3(-8, 0, -3),
+                    trunkGeometry: new THREE.BoxGeometry(0.6, 3, 0.6),
+                    canopyGeometry: new THREE.TetrahedronGeometry(2.5, 1),
+                    trunkColor: 0xff00ff,
+                    canopyColor: 0xff0088,
+                    lightColor: 0xff00aa,
+                    lightIntensity: 4,
+                    trunkHeight: 1.5,
+                    canopyHeight: 4
+                },
+                // Octahedron tree - right side
+                {
+                    position: new THREE.Vector3(6, 0, -6),
+                    trunkGeometry: new THREE.CylinderGeometry(0.15, 0.25, 4, 8),
+                    canopyGeometry: new THREE.OctahedronGeometry(2.2, 1),
+                    trunkColor: 0x0088ff,
+                    canopyColor: 0x0066ff,
+                    lightColor: 0x0088ff,
+                    lightIntensity: 4,
+                    trunkHeight: 2,
+                    canopyHeight: 4.5
+                },
+                // Dodecahedron tree - back left
+                {
+                    position: new THREE.Vector3(-4, 0, 8),
+                    trunkGeometry: new THREE.CylinderGeometry(0.3, 0.3, 2.5, 12),
+                    canopyGeometry: new THREE.DodecahedronGeometry(2, 0),
+                    trunkColor: 0xffaa00,
+                    canopyColor: 0xff8800,
+                    lightColor: 0xffaa00,
+                    lightIntensity: 3,
+                    trunkHeight: 1.25,
+                    canopyHeight: 3.5
+                },
+                // Icosahedron tree - back right  
+                {
+                    position: new THREE.Vector3(3, 0, 6),
+                    trunkGeometry: new THREE.CylinderGeometry(0.1, 0.2, 3.5, 6),
+                    canopyGeometry: new THREE.IcosahedronGeometry(1.8, 1),
+                    trunkColor: 0x88ff00,
+                    canopyColor: 0x66ff00,
+                    lightColor: 0x88ff00,
+                    lightIntensity: 3,
+                    trunkHeight: 1.75,
+                    canopyHeight: 3.5
+                }
+            ];
+            
+            treeConfigs.forEach(config => {
+                const tree = new THREE.Group();
+                tree.position.copy(config.position);
                 
-                // Base pedestal
-                const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 0.5, 12);
-                const baseMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0x004466, 
+                // Create trunk
+                const trunkMat = new THREE.MeshBasicMaterial({ 
+                    color: config.trunkColor, 
                     transparent: true, 
                     opacity: 0.3 
                 });
-                const base = new THREE.Mesh(baseGeometry, baseMaterial);
-                base.position.y = 0.25;
-                fountain.add(base);
+                const trunk = new THREE.Mesh(config.trunkGeometry, trunkMat);
+                trunk.position.y = config.trunkHeight;
+                tree.add(trunk);
                 
-                // Base wireframe
-                const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
-                    color: 0x00aaff, 
-                    wireframe: true, 
+                // Create canopy
+                const canopyMat = new THREE.MeshBasicMaterial({ 
+                    color: config.canopyColor, 
                     transparent: true, 
-                    opacity: 0.8 
-                }));
-                baseWireframe.position.copy(base.position);
-                fountain.add(baseWireframe);
-                
-                // Central pillar
-                const pillarGeometry = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
-                const pillarMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0x0066aa, 
-                    transparent: true, 
-                    opacity: 0.4 
+                    opacity: 0.25 
                 });
-                const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
-                pillar.position.y = 1.5;
-                fountain.add(pillar);
+                const canopy = new THREE.Mesh(config.canopyGeometry, canopyMat);
+                canopy.position.y = config.canopyHeight;
+                tree.add(canopy);
                 
-                // Pillar wireframe
-                const pillarWireframe = new THREE.Mesh(pillarGeometry, new THREE.MeshBasicMaterial({ 
-                    color: 0x00ddff, 
-                    wireframe: true, 
-                    transparent: true, 
-                    opacity: 0.9 
-                }));
-                pillarWireframe.position.copy(pillar.position);
-                fountain.add(pillarWireframe);
-                
-                // Ornamental top crystal
-                const crystalGeometry = new THREE.OctahedronGeometry(0.4, 1);
-                const crystalMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0x00ffff, 
-                    transparent: true, 
-                    opacity: 0.6 
-                });
-                const crystal = new THREE.Mesh(crystalGeometry, crystalMaterial);
-                crystal.position.y = 2.8;
-                fountain.add(crystal);
-                
-                // Crystal wireframe
-                const crystalWireframe = new THREE.Mesh(crystalGeometry, new THREE.MeshBasicMaterial({ 
+                // Create wireframe overlays for Tron effect
+                const wireframeMat = new THREE.MeshBasicMaterial({ 
                     color: 0xffffff, 
-                    wireframe: true 
-                }));
-                crystalWireframe.position.copy(crystal.position);
-                fountain.add(crystalWireframe);
-                
-                // Glowing light
-                const fountainLight = new THREE.PointLight(0x00ccff, 8, 20);
-                fountainLight.position.y = 2.8;
-                fountain.add(fountainLight);
-                
-                // Add floating ring elements
-                for (let i = 0; i < 6; i++) {
-                    const angle = (i / 6) * Math.PI * 2;
-                    const ringGeometry = new THREE.TorusGeometry(0.15, 0.03, 6, 12);
-                    const ringMaterial = new THREE.MeshBasicMaterial({ 
-                        color: 0x0088ff, 
-                        transparent: true, 
-                        opacity: 0.7 
-                    });
-                    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-                    ring.position.set(
-                        Math.cos(angle) * 1.2,
-                        0.8 + Math.sin(i) * 0.2,
-                        Math.sin(angle) * 1.2
-                    );
-                    ring.rotation.x = Math.PI / 2 + Math.sin(i) * 0.3;
-                    fountain.add(ring);
-                }
-                
-                scene.add(fountain);
-                
-                // Store fountain position for voxel spawning
-                window.fountainPosition = new THREE.Vector3(-2, 2.8, 2);
-            }
-            
-            function createGameOfLifeMonolith() {
-                const monolith = new THREE.Group();
-                monolith.position.set(10, 0, -5); // Position away from other structures
-                
-                // Main monolith structure - tall and imposing
-                const monolithGeometry = new THREE.BoxGeometry(0.8, 12, 3);
-                const monolithMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0x001133, 
-                    transparent: true, 
-                    opacity: 0.4 
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.8
                 });
-                const monolithCore = new THREE.Mesh(monolithGeometry, monolithMaterial);
-                monolithCore.position.y = 6;
-                monolith.add(monolithCore);
+                const trunkWireframe = new THREE.Mesh(config.trunkGeometry, wireframeMat);
+                trunkWireframe.position.copy(trunk.position);
+                tree.add(trunkWireframe);
                 
-                // Monolith wireframe
-                const monolithWireframe = new THREE.Mesh(monolithGeometry, new THREE.MeshBasicMaterial({ 
-                    color: 0x0055aa, 
-                    wireframe: true, 
-                    transparent: true, 
-                    opacity: 0.6 
-                }));
-                monolithWireframe.position.copy(monolithCore.position);
-                monolith.add(monolithWireframe);
+                const canopyWireframe = new THREE.Mesh(config.canopyGeometry, wireframeMat);
+                canopyWireframe.position.copy(canopy.position);
+                tree.add(canopyWireframe);
                 
-                // Base platform
-                const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 1, 8);
-                const baseMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0x002244, 
-                    transparent: true, 
-                    opacity: 0.5 
-                });
-                const base = new THREE.Mesh(baseGeometry, baseMaterial);
-                base.position.y = 0.5;
-                monolith.add(base);
+                // Add glowing light
+                const treeLight = new THREE.PointLight(config.lightColor, config.lightIntensity, 12);
+                treeLight.position.y = config.canopyHeight;
+                tree.add(treeLight);
                 
-                // Base wireframe
-                const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
-                    color: 0x00aaff, 
-                    wireframe: true, 
-                    transparent: true, 
-                    opacity: 0.8 
-                }));
-                baseWireframe.position.copy(base.position);
-                monolith.add(baseWireframe);
-                
-                // Create light panel grid
-                createLightPanelGrid(monolith);
-                
-                // Add ambient lighting
-                const monolithLight = new THREE.PointLight(0x0066ff, 6, 25);
-                monolithLight.position.set(0, 8, 2);
-                monolith.add(monolithLight);
-                
-                scene.add(monolith);
-                
-                // Initialize Game of Life grid
-                initializeGameOfLife();
-            }
-            
-            function createLightPanelGrid(monolith) {
-                const panelSize = 0.12;
-                const panelSpacing = 0.15;
-                const gridWidth = GRID_SIZE_X * panelSpacing;
-                const gridHeight = GRID_SIZE_Y * panelSpacing;
-                
-                // Position grid to cover entire monolith from top to floor
-                const gridStartX = -gridWidth / 2 + panelSpacing / 2;
-                const gridStartY = 12 - panelSpacing / 2; // Start from very top
-                const gridZ = 1.6; // Just in front of monolith face
-                
-                for (let x = 0; x < GRID_SIZE_X; x++) {
-                    monolithPanels[x] = [];
-                    for (let y = 0; y < GRID_SIZE_Y; y++) {
-                        // Create panel geometry
-                        const panelGeometry = new THREE.PlaneGeometry(panelSize, panelSize);
-                        const panelMaterial = new THREE.MeshStandardMaterial({ 
-                            color: 0x001122,
-                            emissive: 0x000000,
-                            transparent: true,
-                            opacity: 0.3,
-                            side: THREE.DoubleSide
-                        });
-                        
-                        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
-                        panel.position.set(
-                            gridStartX + x * panelSpacing,
-                            gridStartY - y * panelSpacing,
-                            gridZ
-                        );
-                        
-                        // Store grid coordinates in userData
-                        panel.userData = { gridX: x, gridY: y, isAlive: false };
-                        
-                        monolith.add(panel);
-                        monolithPanels[x][y] = panel;
-                        
-                        // Add subtle wireframe border
-                        const borderGeometry = new THREE.EdgesGeometry(panelGeometry);
-                        const borderMaterial = new THREE.LineBasicMaterial({ 
-                            color: 0x004466, 
-                            transparent: true, 
-                            opacity: 0.5 
-                        });
-                        const border = new THREE.LineSegments(borderGeometry, borderMaterial);
-                        border.position.copy(panel.position);
-                        border.position.z += 0.001; // Slightly in front
-                        monolith.add(border);
-                    }
-                }
-            }
-
-            // --- FOUNTAIN VOXEL SYSTEM ---
-            const voxelSize = 0.08;
-            const boidGeometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
-            const interactiveMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xffffff, 
-                emissive: 0x002244,
-                transparent: true,
-                opacity: 0.9
-            });
-            
-            // Create fountain voxel mesh
-            fountainVoxelsMesh = new THREE.InstancedMesh(boidGeometry, interactiveMaterial, fountainVoxelCount);
-            fountainVoxelsMesh.name = "fountain_voxels";
-            scene.add(fountainVoxelsMesh);
-            
-            // Initialize empty fountain voxels array
-            for (let i = 0; i < fountainVoxelCount; i++) {
-                fountainVoxels.push(null);
-            }
-            
-            // Initialize spawn timing and start fountain immediately
-            window.lastFountainSpawn = 0;
-            
-            // Pre-spawn minimal initial voxels for Quest 3 performance
-            for (let i = 0; i < 2; i++) {
-                setTimeout(() => {
-                    spawnFountainVoxel();
-                    if (i === 0) console.log('Fountain system activated - minimal spawning for Quest 3 performance');
-                }, i * 500);
-            }
-            
-            // --- REVISED: Create two proxy meshes for holding, one for each hand ---
-            heldVoxelMesh1 = new THREE.Mesh(boidGeometry, interactiveMaterial.clone());
-            heldVoxelMesh1.visible = false;
-            heldVoxelMesh1.position.set(0, -1000, 0); // Hide far away initially
-            scene.add(heldVoxelMesh1);
-            heldVoxelMesh2 = new THREE.Mesh(boidGeometry, interactiveMaterial.clone());
-            heldVoxelMesh2.visible = false;
-            heldVoxelMesh2.position.set(0, -1000, 0); // Hide far away initially
-            scene.add(heldVoxelMesh2);
-
-            const aliveVoxelsMesh = new THREE.InstancedMesh(boidGeometry, new THREE.MeshNormalMaterial(), 500);
-            aliveVoxelsMesh.name = "alive_voxels";
-            scene.add(aliveVoxelsMesh);
-            
-            // Create predator mesh
-            const predatorMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, emissive: 0x440000 });
-            const predatorMesh = new THREE.InstancedMesh(boidGeometry, predatorMaterial, 100);
-            predatorMesh.name = "predators";
-            scene.add(predatorMesh);
-            
-            for (let i = 0; i < initialBoidCount; i++) { boids.push(new Boid()); }
-            
-            // --- REVISED: Hand Tracking Setup ---
-            const handModelFactory = new XRHandModelFactory();
-            hand1 = renderer.xr.getHand(0);
-            hand2 = renderer.xr.getHand(1);
-            [hand1, hand2].forEach((hand, index) => {
-                hand.userData.isReady = false;
-                hand.userData.isPinching = false;
-                hand.userData.heldVoxelIndex = null;
-                hand.userData.heldBoidIndex = null;
-                hand.userData.isGrabbingBoid = false;
-                hand.userData.holdStartTime = 0;
-                hand.userData.lastPosition = new THREE.Vector3();
-                hand.userData.velocity = new THREE.Vector3();
-                hand.userData.shakeIntensity = 0;
-                hand.userData.shakeHistory = [];
-                hand.userData.isFist = false;
-                hand.userData.lastFistState = false;
-                hand.userData.punchVelocity = 0;
-                hand.userData.tipPositions = { THUMB: new THREE.Vector3(), INDEX: new THREE.Vector3(), MIDDLE: new THREE.Vector3() };
-                
-                // Create hand model with proper setup for Quest 3
-                try {
-                    const handModel = handModelFactory.createHandModel(hand, "mesh");
-                    if (handModel) {
-                        handModel.visible = true;
-                        handModel.scale.setScalar(1.2); // Slightly larger
-                        hand.add(handModel);
-                        console.log(`Hand model created for hand ${index}`);
-                    } else {
-                        console.warn(`Failed to create hand model for hand ${index}`);
-                    }
-                } catch (error) {
-                    console.error(`Error creating hand model for hand ${index}:`, error);
-                }
-                
-                // Add VERY large, bright hand indicators as primary visibility method
-                const handSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.15, 16, 16), // 3x larger
-                    new THREE.MeshBasicMaterial({ 
-                        color: index === 0 ? 0x00ff00 : 0xff0000, // Green/Red for clear distinction
-                        transparent: false, // Solid for maximum visibility
-                        emissive: index === 0 ? 0x008800 : 0x880000
-                    })
+                // Add to obstacles array
+                obstacles.push(
+                    { position: new THREE.Vector3().copy(config.position).add(new THREE.Vector3(0, config.trunkHeight, 0)), radius: 0.5 },
+                    { position: new THREE.Vector3().copy(config.position).add(new THREE.Vector3(0, config.canopyHeight, 0)), radius: 2.5 }
                 );
-                hand.add(handSphere);
-                hand.userData.handIndicator = handSphere;
                 
-                // Add large fingertip indicators
-                const fingerSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.08, 12, 12), // 4x larger
-                    new THREE.MeshBasicMaterial({ 
-                        color: 0xffff00, 
-                        transparent: false,
-                        emissive: 0x888800
-                    })
-                );
-                hand.add(fingerSphere);
-                hand.userData.fingerIndicator = fingerSphere;
-                
-                // Add pulsing effect to hand indicator
-                hand.userData.pulsePhase = Math.random() * Math.PI * 2;
-                
-                // Force hand visibility
-                hand.visible = true;
-                
-                // Add hands to camera to maintain proper positioning relative to head
-                camera.add(hand);
-                console.log(`Hand ${index} setup complete and added to camera - hands follow head position`);
-                
-                // Additional debug: Add visible markers that follow the camera/user
-                const debugMarker = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.1, 8, 8),
-                    new THREE.MeshBasicMaterial({
-                        color: index === 0 ? 0x00ff00 : 0xff0000,
-                        emissive: index === 0 ? 0x00ff00 : 0xff0000
-                    })
-                );
-                debugMarker.position.set(index === 0 ? -0.5 : 0.5, -0.3, -1); // Closer to user view
-                camera.add(debugMarker);
-                console.log(`Debug marker added to camera at relative position:`, debugMarker.position);
+                scene.add(tree);
             });
-            
-            // No controller setup needed for hand-only experience
-
-            // Add VR session start/end handlers to control user position
-            renderer.xr.addEventListener('sessionstart', () => {
-                console.log('VR session starting - hiding all UI elements...');
-                
-                // Hide ALL possible UI elements in VR to fix dark overlay issue
-                const infoDiv = document.getElementById('info');
-                const vrButton = document.querySelector('#vr-button');
-                const vrButtonAlt = document.querySelector('button');
-                const vrButtonThreeJS = document.querySelector('[id*="VRButton"]'); // Three.js VR button
-                const allDivs = document.querySelectorAll('div');
-                const allButtons = document.querySelectorAll('button');
-                const allCanvases = document.querySelectorAll('canvas');
-                const allElements = document.querySelectorAll('*');
-                
-                // Hide main UI elements
-                [infoDiv, vrButton, vrButtonAlt, vrButtonThreeJS].forEach(element => {
-                    if (element) {
-                        element.style.display = 'none !important';
-                        element.style.visibility = 'hidden !important';
-                        element.style.opacity = '0 !important';
-                        element.style.pointerEvents = 'none !important';
-                        element.style.zIndex = '-9999 !important';
-                        element.style.transform = 'scale(0) !important';
-                        console.log('Hidden element:', element.tagName, element.id || element.className);
-                    }
-                });
-                
-                // Hide all positioned divs and buttons
-                [...allDivs, ...allButtons].forEach(element => {
-                    if (element) {
-                        const computedStyle = window.getComputedStyle(element);
-                        const isPositioned = computedStyle.position === 'absolute' || 
-                                           computedStyle.position === 'fixed' ||
-                                           computedStyle.position === 'relative';
-                        
-                        if (isPositioned || element.tagName.toLowerCase() === 'button') {
-                            element.style.display = 'none !important';
-                            element.style.visibility = 'hidden !important';
-                            element.style.opacity = '0 !important';
-                            element.style.pointerEvents = 'none !important';
-                            element.style.zIndex = '-9999 !important';
-                            console.log('Hidden positioned/button element:', element.tagName, element.id || element.className);
-                        }
-                    }
-                });
-                
-                // Ensure no overlays on any canvas elements except the main renderer
-                allCanvases.forEach((canvas, index) => {
-                    if (canvas !== renderer.domElement) {
-                        canvas.style.display = 'none !important';
-                        canvas.style.visibility = 'hidden !important';
-                        console.log(`Hidden extra canvas ${index}`);
-                    }
-                });
-                
-                // Specifically target known UI elements that could cause overlay issues
-                const problematicElements = [
-                    '#info',
-                    '#vr-button', 
-                    '#threejs-vr-button',
-                    'button',
-                    '.ui-element',
-                    '.overlay',
-                    '.menu',
-                    '.hud'
-                ];
-                
-                problematicElements.forEach(selector => {
-                    const elements = document.querySelectorAll(selector);
-                    elements.forEach(element => {
-                        if (element && element !== renderer.domElement) {
-                            element.style.display = 'none !important';
-                            element.style.visibility = 'hidden !important';
-                            element.style.opacity = '0 !important';
-                            element.style.pointerEvents = 'none !important';
-                        }
-                    });
-                });
-                
-                // Force canvas to be the only visible element
-                if (renderer.domElement) {
-                    renderer.domElement.style.display = 'block !important';
-                    renderer.domElement.style.visibility = 'visible !important';
-                    renderer.domElement.style.opacity = '1 !important';
-                    renderer.domElement.style.zIndex = '1 !important';
-                }
-                
-                // Additional check: Remove any WebXR button overlays that might persist
-                setTimeout(() => {
-                    const potentialOverlays = document.querySelectorAll('[style*="rgba"], [style*="background"], .xr-button, [class*="vr"], [class*="ar"]');
-                    potentialOverlays.forEach(element => {
-                        if (element !== renderer.domElement && !element.contains(renderer.domElement)) {
-                            element.style.display = 'none !important';
-                            element.style.visibility = 'hidden !important';
-                            element.style.opacity = '0 !important';
-                            console.log('Hidden potential overlay element:', element.className || element.id || element.tagName);
-                        }
-                    });
-                }, 100);
-                
-                // Add VR class to body for CSS-based hiding
-                document.body.classList.add('vr-active');
-                
-                // Offset the SCENE position (not camera) so hands stay with user
-                const offsetPosition = new THREE.Vector3(8, 1.8, 8);
-                scene.position.set(-offsetPosition.x, -offsetPosition.y, -offsetPosition.z);
-                
-                console.log('VR session started - hands attached to camera for proper head tracking, scene offset for world positioning');
-            });
-            
-            renderer.xr.addEventListener('sessionend', () => {
-                console.log('VR session ended - restoring UI elements...');
-                
-                // Show UI elements when exiting VR
-                const infoDiv = document.getElementById('info');
-                const vrButton = document.querySelector('#vr-button');
-                const vrButtonAlt = document.querySelector('button');
-                
-                [infoDiv, vrButton, vrButtonAlt].forEach(element => {
-                    if (element && element.tagName.toLowerCase() !== 'canvas') {
-                        element.style.display = '';
-                        element.style.visibility = '';
-                        element.style.opacity = '';
-                        element.style.pointerEvents = '';
-                        element.style.zIndex = '';
-                    }
-                });
-                
-                // Remove VR class from body
-                document.body.classList.remove('vr-active');
-                
-                // Reset scene position when exiting VR
-                scene.position.set(0, 0, 0);
-                console.log('UI elements restored and scene position reset after VR session');
-            });
-
-            renderer.setAnimationLoop(() => { update(); render(); });
-            window.addEventListener('resize', onWindowResize, false);
         }
         
-        function initializeTankBattle() {
-            console.log('🎮 Initializing Battle Zone tank battle...');
+        function createFountain() {
+            const fountain = new THREE.Group();
+            fountain.position.set(-2, 0, 2); // Position near user spawn
             
-            // Create tanks for both teams
-            for (let i = 0; i < TANK_COUNT; i++) {
-                const team = i % 2; // Alternate teams
-                const angle = (i / TANK_COUNT) * Math.PI * 2;
-                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
+            // Base pedestal
+            const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 0.5, 12);
+            const baseMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x004466, 
+                transparent: true, 
+                opacity: 0.3 
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.y = 0.25;
+            fountain.add(base);
+            
+            // Base wireframe
+            const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
+                color: 0x00aaff, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.8 
+            }));
+            baseWireframe.position.copy(base.position);
+            fountain.add(baseWireframe);
+            
+            // Central pillar
+            const pillarGeometry = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
+            const pillarMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x0066aa,
+                transparent: true, 
+                opacity: 0.4 
+            });
+            const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+            pillar.position.y = 1.5;
+            fountain.add(pillar);
+            
+            // Pillar wireframe
+            const pillarWireframe = new THREE.Mesh(pillarGeometry, new THREE.MeshBasicMaterial({ 
+                color: 0x00ddff, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.9 
+            }));
+            pillarWireframe.position.copy(pillar.position);
+            fountain.add(pillarWireframe);
+            
+            // Ornamental top crystal
+            const crystalGeometry = new THREE.OctahedronGeometry(0.4, 1);
+            const crystalMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.6 
+            });
+            const crystal = new THREE.Mesh(crystalGeometry, crystalMaterial);
+            crystal.position.y = 2.8;
+            fountain.add(crystal);
+            
+            // Crystal wireframe
+            const crystalWireframe = new THREE.Mesh(crystalGeometry, new THREE.MeshBasicMaterial({ 
+                color: 0xffffff, 
+                wireframe: true 
+            }));
+            crystalWireframe.position.copy(crystal.position);
+            fountain.add(crystalWireframe);
+            
+            // Glowing light
+            const fountainLight = new THREE.PointLight(0x00ccff, 8, 20);
+            fountainLight.position.y = 2.8;
+            fountain.add(fountainLight);
+            
+            // Add floating ring elements
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                const ringGeometry = new THREE.TorusGeometry(0.15, 0.03, 6, 12);
+                const ringMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x0088ff, 
+                    transparent: true, 
+                    opacity: 0.7 
+                });
+                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                ring.position.set(
+                    Math.cos(angle) * 1.2,
+                    0.8 + Math.sin(i) * 0.2,
+                    Math.sin(angle) * 1.2
+                );
+                ring.rotation.x = Math.PI / 2 + Math.sin(i) * 0.3;
+                fountain.add(ring);
+            }
+            
+            scene.add(fountain);
+            
+            // Store fountain position for voxel spawning
+            window.fountainPosition = new THREE.Vector3(-2, 2.8, 2);
+        }
+        
+        function addGliderPattern(startX, startY) {
+            // Classic glider pattern
+            const glider = [
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 1]
+            ];
+            
+            for (let y = 0; y < glider.length; y++) {
+                for (let x = 0; x < glider[y].length; x++) {
+                    const gridX = startX + x;
+                    const gridY = startY + y;
+                    if (gridX >= 0 && gridX < GRID_SIZE_X && gridY >= 0 && gridY < GRID_SIZE_Y) {
+                        gameOfLifeGrid[gridX][gridY] = glider[y][x] === 1;
+                        if (monolithPanels[gridX] && monolithPanels[gridX][gridY]) {
+                            updatePanelAppearance(monolithPanels[gridX][gridY], glider[y][x] === 1);
+                        }
+                    }
+                }
+            }
+        }
+        
+        function addOscillatorPattern(startX, startY) {
+            // Blinker oscillator pattern
+            const blinker = [
+                [1],
+                [1],
+                [1]
+            ];
+            
+            for (let y = 0; y < blinker.length; y++) {
+                for (let x = 0; x < blinker[y].length; x++) {
+                    const gridX = startX + x;
+                    const gridY = startY + y;
+                    if (gridX >= 0 && gridX < GRID_SIZE_X && gridY >= 0 && gridY < GRID_SIZE_Y) {
+                        gameOfLifeGrid[gridX][gridY] = blinker[y][x] === 1;
+                        if (monolithPanels[gridX] && monolithPanels[gridX][gridY]) {
+                            updatePanelAppearance(monolithPanels[gridX][gridY], blinker[y][x] === 1);
+                        }
+                    }
+                }
+            }
+        }
+        
+        function initializeGameOfLife() {
+            // Initialize grid with some interesting starting patterns
+            for (let x = 0; x < GRID_SIZE_X; x++) {
+                gameOfLifeGrid[x] = [];
+                for (let y = 0; y < GRID_SIZE_Y; y++) {
+                    gameOfLifeGrid[x][y] = false;
+                }
+            }
+            
+            // Add some classic Conway patterns automatically throughout the height
+            addGliderPattern(2, 2);
+            addGliderPattern(12, 8);
+            addOscillatorPattern(8, 15);
+            addGliderPattern(4, 25);
+            addOscillatorPattern(10, 35);
+            addGliderPattern(6, 45);
+            addOscillatorPattern(2, 55);
+            addGliderPattern(11, 65);
+            addOscillatorPattern(7, 75);
+            
+            // Start the game automatically
+            gameOfLifeRunning = true;
+            console.log('🎮 Game of Life started with predefined patterns!');
+        }
+        
+        function createGameOfLifeMonolith() {
+            const monolith = new THREE.Group();
+            monolith.position.set(10, 0, -5); // Position away from other structures
+            
+            // Main monolith structure - tall and imposing
+            const monolithGeometry = new THREE.BoxGeometry(0.8, 12, 3);
+            const monolithMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x001133, 
+                transparent: true, 
+                opacity: 0.4 
+            });
+            const monolithCore = new THREE.Mesh(monolithGeometry, monolithMaterial);
+            monolithCore.position.y = 6;
+            monolith.add(monolithCore);
+            
+            // Monolith wireframe
+            const monolithWireframe = new THREE.Mesh(monolithGeometry, new THREE.MeshBasicMaterial({ 
+                color: 0x0055aa, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.6 
+            }));
+            monolithWireframe.position.copy(monolithCore.position);
+            monolith.add(monolithWireframe);
+            
+            // Base platform
+            const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 1, 8);
+            const baseMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x002244, 
+                transparent: true, 
+                opacity: 0.5 
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.y = 0.5;
+            monolith.add(base);
+            
+            // Base wireframe
+            const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
+                color: 0x00aaff, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.8 
+            }));
+            baseWireframe.position.copy(base.position);
+            monolith.add(baseWireframe);
+            
+            // Create light panel grid
+            createLightPanelGrid(monolith);
+            
+            // Add ambient lighting
+            const monolithLight = new THREE.PointLight(0x0066ff, 6, 25);
+            monolithLight.position.set(0, 8, 2);
+            monolith.add(monolithLight);
+            
+            scene.add(monolith);
+            
+            // Initialize Game of Life grid
+            initializeGameOfLife();
+        }
+        
+        function createLightPanelGrid(monolith) {
+            const panelSize = 0.12;
+            const panelSpacing = 0.15;
+            const gridWidth = GRID_SIZE_X * panelSpacing;
+            const gridHeight = GRID_SIZE_Y * panelSpacing;
+            
+            // Position grid to cover entire monolith from top to floor
+            const gridStartX = -gridWidth / 2 + panelSpacing / 2;
+            const gridStartY = 12 - panelSpacing / 2; // Start from very top
+            const gridZ = 1.6; // Just in front of monolith face
+            
+            for (let x = 0; x < GRID_SIZE_X; x++) {
+                monolithPanels[x] = [];
+                for (let y = 0; y < GRID_SIZE_Y; y++) {
+                    // Create panel geometry
+                    const panelGeometry = new THREE.PlaneGeometry(panelSize, panelSize);
+                    const panelMaterial = new THREE.MeshStandardMaterial({ 
+                        color: 0x001122,
+                        emissive: 0x000000,
+                        transparent: true,
+                        opacity: 0.3,
+                        side: THREE.DoubleSide
+                    });
+                    
+                    const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+                    panel.position.set(
+                        gridStartX + x * panelSpacing,
+                        gridStartY - y * panelSpacing,
+                        gridZ
+                    );
+                    
+                    // Store grid coordinates in userData
+                    panel.userData = { gridX: x, gridY: y, isAlive: false };
+                    
+                    monolith.add(panel);
+                    monolithPanels[x][y] = panel;
+                    
+                    // Add subtle wireframe border
+                    const borderGeometry = new THREE.EdgesGeometry(panelGeometry);
+                    const borderMaterial = new THREE.LineBasicMaterial({ 
+                        color: 0x004466, 
+                        transparent: true, 
+                        opacity: 0.5 
+                    });
+                    const border = new THREE.LineSegments(borderGeometry, borderMaterial);
+                    border.position.copy(panel.position);
+                    border.position.z += 0.001; // Slightly in front
+                    monolith.add(border);
+                }
+            }
+        }
+
+        function handleGameOfLifeTouch(hand) {
+            try {
+                if (!hand.userData.isReady || !hand.userData.tipPositions.INDEX) return;
                 
-                // Position tanks relative to VR user position (8, 1.8, 8)
+                const touchPosition = hand.userData.tipPositions.INDEX;
+                const touchRadius = 0.08;
+                
+                // Check each panel for touch
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        if (!monolithPanels[x] || !monolithPanels[x][y]) continue;
+                        
+                        const panel = monolithPanels[x][y];
+                        const distance = touchPosition.distanceTo(panel.position);
+                        
+                        if (distance < touchRadius) {
+                            // Toggle cell state
+                            gameOfLifeGrid[x][y] = !gameOfLifeGrid[x][y];
+                            panel.userData.isAlive = gameOfLifeGrid[x][y];
+                            
+                            // Update panel appearance
+                            updatePanelAppearance(panel, gameOfLifeGrid[x][y]);
+                            
+                            // Play zen sound (placeholder - in real implementation you'd use Web Audio API)
+                            console.log('🎵 Zen touch sound at grid:', x, y);
+                            
+                            // Prevent multiple touches per frame
+                            return;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Game of Life touch error:', error);
+            }
+        }
+        
+        function updatePanelAppearance(panel, isAlive) {
+            if (!panel || !panel.material) return;
+            
+            if (isAlive) {
+                panel.material.color.setHex(0x00ffaa);
+                if (panel.material.emissive) {
+                    panel.material.emissive.setHex(0x004422);
+                }
+                panel.material.opacity = 0.9;
+            } else {
+                panel.material.color.setHex(0x001122);
+                if (panel.material.emissive) {
+                    panel.material.emissive.setHex(0x000000);
+                }
+                panel.material.opacity = 0.3;
+            }
+        }
+        
+        function updateGameOfLife(elapsedTime) {
+            try {
+                // Auto-progress Game of Life
+                if (gameOfLifeRunning && elapsedTime - lastGameOfLifeUpdate > (1.0 / GAME_OF_LIFE_SPEED)) {
+                    stepGameOfLife();
+                    lastGameOfLifeUpdate = elapsedTime;
+                }
+                
+                // Keep the game running continuously
+                if (!gameOfLifeRunning) {
+                    gameOfLifeRunning = true;
+                    console.log('🎮 Game of Life restarted!');
+                }
+            } catch (error) {
+                console.warn('Game of Life update error:', error);
+            }
+        }
+        
+        function stepGameOfLife() {
+            try {
+                const newGrid = [];
+                
+                // Initialize new grid
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    newGrid[x] = [];
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        newGrid[x][y] = false;
+                    }
+                }
+                
+                // Apply Conway's Game of Life rules
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        const neighbors = countNeighbors(x, y);
+                        const isAlive = gameOfLifeGrid[x][y];
+                        
+                        if (isAlive) {
+                            // Live cell rules
+                            if (neighbors === 2 || neighbors === 3) {
+                                newGrid[x][y] = true; // Survives
+                            }
+                            // else dies (underpopulation or overpopulation)
+                        } else {
+                            // Dead cell rules
+                            if (neighbors === 3) {
+                                newGrid[x][y] = true; // Birth
+                            }
+                        }
+                    }
+                }
+                
+                // Update grid and panels
+                let hasChanges = false;
+                for (let x = 0; x < GRID_SIZE_X; x++) {
+                    for (let y = 0; y < GRID_SIZE_Y; y++) {
+                        if (gameOfLifeGrid[x][y] !== newGrid[x][y]) {
+                            hasChanges = true;
+                        }
+                        gameOfLifeGrid[x][y] = newGrid[x][y];
+                        
+                        if (monolithPanels[x] && monolithPanels[x][y]) {
+                            monolithPanels[x][y].userData.isAlive = newGrid[x][y];
+                            updatePanelAppearance(monolithPanels[x][y], newGrid[x][y]);
+                        }
+                    }
+                }
+                
+                // If no changes (stable state), add some new random patterns to keep it interesting
+                if (!hasChanges) {
+                    addRandomPattern();
+                    console.log('🎮 Game of Life reached stable state - adding new patterns!');
+                }
+                
+            } catch (error) {
+                console.warn('Game of Life step error:', error);
+            }
+        }
+        
+        function countNeighbors(x, y) {
+            let count = 0;
+            
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue; // Skip center cell
+                    
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    
+                    // Check bounds
+                    if (nx >= 0 && nx < GRID_SIZE_X && ny >= 0 && ny < GRID_SIZE_Y) {
+                        if (gameOfLifeGrid[nx][ny]) {
+                            count++;
+                        }
+                    }
+                }
+            }
+            
+            return count;
+        }
+        
+        function addRandomPattern() {
+            // Add random patterns to keep the simulation interesting
+            const patterns = [
+                () => addGliderPattern(Math.floor(Math.random() * (GRID_SIZE_X - 3)), Math.floor(Math.random() * (GRID_SIZE_Y - 3))),
+                () => addOscillatorPattern(Math.floor(Math.random() * (GRID_SIZE_X - 1)), Math.floor(Math.random() * (GRID_SIZE_Y - 3))),
+                () => {
+                    // Random small cluster
+                    const x = Math.floor(Math.random() * (GRID_SIZE_X - 2));
+                    const y = Math.floor(Math.random() * (GRID_SIZE_Y - 2));
+                    for (let dx = 0; dx < 2; dx++) {
+                        for (let dy = 0; dy < 2; dy++) {
+                            if (Math.random() > 0.5) {
+                                gameOfLifeGrid[x + dx][y + dy] = true;
+                                if (monolithPanels[x + dx] && monolithPanels[x + dx][y + dy]) {
+                                    updatePanelAppearance(monolithPanels[x + dx][y + dy], true);
+                                }
+                            }
+                        }
+                    }
+                }
+            ];
+            
+            // Add 1-3 random patterns
+            const numPatterns = Math.floor(Math.random() * 3) + 1;
+            for (let i = 0; i < numPatterns; i++) {
+                const randomPattern = patterns[Math.floor(Math.random() * patterns.length)];
+                randomPattern();
+            }
+        }
+
+        function createTankBattlefield() {
+            // Clear existing tanks
+            tanks = [];
+            
+            // Create initial tanks
+            for (let i = 0; i < TANK_COUNT; i++) {
+                const team = i % 2; // Alternate between team 0 and 1
+                const angle = (i / TANK_COUNT) * Math.PI * 2;
+                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * 8;
+                
                 const position = new THREE.Vector3(
-                    8 + Math.cos(angle) * distance,
-                    0.5, // Slightly above ground for visibility
-                    8 + Math.sin(angle) * distance
+                    Math.cos(angle) * distance,
+                    0,
+                    Math.sin(angle) * distance
                 );
                 
                 const tank = new BattleTank(position, team);
                 tanks.push(tank);
             }
             
-            console.log(`⚔️ Tank battle initialized: ${TANK_COUNT} tanks ready for combat!`);
+            console.log(`🚗 Created ${TANK_COUNT} tanks for Battle Zone`);
         }
-        
+
+        function createSpaceBattle() {
+            // Clear existing space objects
+            asteroids = [];
+            spaceShips = [];
+            
+            // Create initial asteroids
+            for (let i = 0; i < ASTEROID_COUNT; i++) {
+                const asteroid = new Asteroid();
+                asteroids.push(asteroid);
+            }
+            
+            // Create initial spaceships
+            for (let i = 0; i < SPACESHIP_COUNT; i++) {
+                const spaceship = new SpaceShip();
+                spaceShips.push(spaceship);
+            }
+            
+            console.log(`🚀 Created ${ASTEROID_COUNT} asteroids and ${SPACESHIP_COUNT} spaceships for Space Battle`);
+        }
+
+        function createLightCycleRacing() {
+            // Clear existing light cycles and trails
+            lightCycles = [];
+            lightTrails = [];
+            
+            // Create initial light cycles
+            for (let i = 0; i < LIGHT_CYCLE_COUNT; i++) {
+                const startX = TRACK_CENTER_X + (i === 0 ? -TRACK_WIDTH / 4 : TRACK_WIDTH / 4);
+                const startZ = TRACK_CENTER_Z - TRACK_HEIGHT / 2;
+                const team = i; // Each cycle gets its own team
+                
+                const lightCycle = new LightCycle(
+                    new THREE.Vector3(startX, 0, startZ),
+                    team
+                );
+                lightCycles.push(lightCycle);
+            }
+            
+            console.log(`🏍️ Created ${LIGHT_CYCLE_COUNT} light cycles for Tron Racing`);
+        }
+
         function createProjectileExplosion(position) {
             try {
                 if (!position) return;
@@ -2517,27 +2579,6 @@
             } catch (error) {
                 console.warn('Tank battle update error:', error);
             }
-        }
-        
-        function initializeSkyBattle() {
-            console.log('✨ Initializing sky starfield and Asteroids battle...');
-            
-            // Create starfield
-            for (let i = 0; i < STAR_COUNT; i++) {
-                stars.push(new Star());
-            }
-            
-            // Create initial asteroids
-            for (let i = 0; i < ASTEROID_COUNT; i++) {
-                asteroids.push(new Asteroid());
-            }
-            
-            // Create space ships
-            for (let i = 0; i < SPACESHIP_COUNT; i++) {
-                spaceShips.push(new SpaceShip());
-            }
-            
-            console.log(`✅ Sky battle initialized: ${STAR_COUNT} stars, ${ASTEROID_COUNT} asteroids, and ${SPACESHIP_COUNT} hunting ship!`);
         }
         
         function createSpaceExplosion(position) {
@@ -2621,41 +2662,6 @@
             }
         }
         
-        function initializeLightCycles() {
-            console.log('🏍️ Initializing Tron light cycle racing...');
-            
-            // Clear any existing light cycles and trails
-            lightCycles.forEach(cycle => {
-                if (cycle.mesh && cycle.mesh.parent) {
-                    cycle.mesh.parent.remove(cycle.mesh);
-                }
-            });
-            lightCycles = [];
-            
-            // Clear all trails
-            lightTrails.forEach(trail => {
-                if (trail && trail.mesh) {
-                    scene.remove(trail.mesh);
-                }
-            });
-            lightTrails = [];
-            
-            // Reset race state
-            raceState = 'racing';
-            raceWinner = null;
-            raceEndTime = 0;
-            
-            // Create two light cycles for side-by-side racing
-            const teamColors = [0x00ffff, 0xff6600]; // Cyan and Orange for clear distinction
-            
-            for (let i = 0; i < LIGHT_CYCLE_COUNT; i++) {
-                const cycle = new LightCycle(teamColors[i], i, i); // (teamColor, lane, cycleId)
-                lightCycles.push(cycle);
-            }
-            
-            console.log(`✅ Created ${LIGHT_CYCLE_COUNT} light cycles ready for racing battle!`);
-        }
-        
         function updateLightCycles(deltaTime, elapsedTime) {
             try {
                 // Race state management
@@ -2717,38 +2723,6 @@
         }
         
         // Light cycle collision detection is now handled within each cycle's update method
-        
-        function initializeTeleportSystem() {
-            console.log('📍 Initializing teleportation system...');
-            
-            // Create teleport reticle (targeting circle)
-            const reticleGeometry = new THREE.RingGeometry(0.3, 0.5, 16);
-            const reticleMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff, 
-                transparent: true, 
-                opacity: 0.8,
-                side: THREE.DoubleSide
-            });
-            teleportReticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
-            teleportReticle.rotation.x = -Math.PI / 2; // Lay flat on ground
-            teleportReticle.visible = false;
-            scene.add(teleportReticle);
-            
-            // Create teleport progress indicator (expanding ring)
-            const indicatorGeometry = new THREE.RingGeometry(0.1, 0.2, 16);
-            const indicatorMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x00ff00, 
-                transparent: true, 
-                opacity: 0.6,
-                side: THREE.DoubleSide
-            });
-            teleportIndicator = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
-            teleportIndicator.rotation.x = -Math.PI / 2;
-            teleportIndicator.visible = false;
-            scene.add(teleportIndicator);
-            
-            console.log('✅ Teleportation system initialized!');
-        }
         
         function handleTeleportation(hand, elapsedTime) {
             try {
@@ -3127,278 +3101,6 @@
             }
         }
         
-        
-        function addFallbackControls() {
-            const fallbackDiv = document.createElement('div');
-            fallbackDiv.style.position = 'absolute';
-            fallbackDiv.style.bottom = '20px';
-            fallbackDiv.style.left = '50%';
-            fallbackDiv.style.transform = 'translateX(-50%)';
-            fallbackDiv.style.padding = '12px 24px';
-            fallbackDiv.style.backgroundColor = 'rgba(255, 100, 100, 0.8)';
-            fallbackDiv.style.color = 'white';
-            fallbackDiv.style.borderRadius = '8px';
-            fallbackDiv.style.fontSize = '14px';
-            fallbackDiv.textContent = 'VR not supported - use mouse to look around';
-            document.body.appendChild(fallbackDiv);
-            
-            // Add basic mouse controls for fallback
-            let mouseX = 0, mouseY = 0;
-            document.addEventListener('mousemove', (event) => {
-                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
-                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
-                camera.position.x = mouseX * 5;
-                camera.position.y = mouseY * 3 + 1.6;
-                camera.lookAt(0, 2, 0);
-            });
-        }
-        
-        function updateHandData(hand) {
-            try {
-                if (hand.joints && hand.joints['index-finger-tip'] && hand.joints['thumb-tip'] && hand.joints['middle-finger-tip']) {
-                    hand.userData.isReady = true;
-                    const thumbTip = hand.joints['thumb-tip'].position;
-                    const indexTip = hand.joints['index-finger-tip'].position;
-                    const middleTip = hand.joints['middle-finger-tip'].position;
-                    
-                    // Store previous position for velocity calculation
-                    hand.userData.lastPosition.copy(hand.userData.tipPositions.INDEX);
-                    
-                    hand.userData.tipPositions.THUMB.copy(thumbTip);
-                    hand.userData.tipPositions.INDEX.copy(indexTip);
-                    hand.userData.tipPositions.MIDDLE.copy(middleTip);
-                    
-                    // Update finger indicator position for better hand visibility
-                    if (hand.userData.fingerIndicator) {
-                        hand.userData.fingerIndicator.position.copy(indexTip);
-                        hand.userData.fingerIndicator.position.sub(hand.position);
-                    }
-                    
-                    // Update hand indicator with pulsing effect
-                    if (hand.userData.handIndicator && hand.userData.pulsePhase !== undefined) {
-                        const pulseScale = 1.0 + Math.sin(clock.getElapsedTime() * 3.0 + hand.userData.pulsePhase) * 0.3;
-                        hand.userData.handIndicator.scale.setScalar(pulseScale);
-                    }
-                    
-                    // Calculate hand velocity
-                    hand.userData.velocity.subVectors(hand.userData.tipPositions.INDEX, hand.userData.lastPosition);
-                    hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
-                    
-                    // Calculate shake intensity
-                    const currentSpeed = hand.userData.velocity.length();
-                    hand.userData.shakeHistory.push(currentSpeed);
-                    if (hand.userData.shakeHistory.length > 5) { // Shorter history for more responsive shaking
-                        hand.userData.shakeHistory.shift();
-                    }
-                    // Use max speed in recent history instead of average for better shake detection
-                    hand.userData.shakeIntensity = Math.max(...hand.userData.shakeHistory);
-                    
-                    // Improved pinch detection
-                    const thumbIndexDist = thumbTip.distanceTo(indexTip);
-                    const thumbMiddleDist = thumbTip.distanceTo(middleTip);
-                    hand.userData.isPinching = thumbIndexDist < 0.03 || thumbMiddleDist < 0.03;
-                } else {
-                    hand.userData.isReady = false;
-                }
-            } catch (error) {
-                console.warn('Hand tracking error:', error);
-                hand.userData.isReady = false;
-            }
-        }
-
-
-        function update() {
-            const elapsedTime = clock.getElapsedTime();
-            const dummy = new THREE.Object3D();
-            frameCount++;
-            const deltaTime = clock.getDelta();
-            
-            // Update punch cooldowns
-            if (punchCooldown1 > 0) {
-                punchCooldown1 -= deltaTime;
-            }
-            if (punchCooldown2 > 0) {
-                punchCooldown2 -= deltaTime;
-            }
-
-            // Only update hand data if XR is active
-            if (renderer.xr.isPresenting) {
-                updateHandData(hand1);
-                updateHandData(hand2);
-                handleGrabbing(hand1, heldVoxelMesh1);
-                handleGrabbing(hand2, heldVoxelMesh2);
-                
-                // Handle Game of Life touch interaction
-                handleGameOfLifeTouch(hand1);
-                handleGameOfLifeTouch(hand2);
-                
-                // Handle teleportation (only use right hand to avoid conflicts)
-                handleTeleportation(hand2, elapsedTime);
-                
-                // Handle punch detection
-                [hand1, hand2].forEach((hand, index) => {
-                    try {
-                        const currentCooldown = index === 0 ? punchCooldown1 : punchCooldown2;
-                        if (currentCooldown > 0 || !hand.userData.isReady) return;
-                        
-                        hand.userData.isFist = detectFist(hand);
-                    
-                    // Detect punch (fist moving fast) - reduced threshold
-                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.5) {
-                        console.log('PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
-                        punchBlast(hand);
-                        if (index === 0) {
-                            punchCooldown1 = PUNCH_COOLDOWN;
-                        } else {
-                            punchCooldown2 = PUNCH_COOLDOWN;
-                        }
-                    }
-                    
-                    // Debug punch detection
-                    if (frameCount % 60 === 0 && hand.userData.isFist) {
-                        console.log('Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.5');
-                    }
-                    
-                    // Track punch velocity (change in fist position)
-                    if (hand.userData.isFist) {
-                        hand.userData.punchVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
-                    } else {
-                        hand.userData.punchVelocity = 0;
-                    }
-                } catch (error) {
-                    console.warn('Punch detection error:', error);
-                }
-            });
-            }
-            
-            // Update particles
-            try {
-                particles = particles.filter(particle => {
-                    if (!particle || !particle.position || !particle.velocity) return false;
-                    
-                    particle.life -= deltaTime * 2;
-                    if (particle.life <= 0) return false;
-                    
-                    particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
-                    particle.velocity.multiplyScalar(0.98); // Friction
-                    return true;
-                });
-            } catch (error) {
-                console.warn('Particle update error:', error);
-                particles = []; // Clear particles on error
-            }
-
-            // Update held objects for both hands
-            [hand1, hand2].forEach((hand, handIndex) => {
-                const heldMesh = handIndex === 0 ? heldVoxelMesh1 : heldVoxelMesh2;
-                
-                // Update held voxel (revival mechanic)
-                if (hand.userData.heldVoxelIndex !== null) {
-                    const voxelData = fountainVoxels[hand.userData.heldVoxelIndex];
-                    if (voxelData) {
-                        heldMesh.position.copy(hand.userData.tipPositions.INDEX);
-                        const chargeRatio = Math.min((elapsedTime - hand.userData.holdStartTime) / REVIVAL_TIME, 1.0);
-                        const finalColor = new THREE.Color(0x00ffaa); // Default final color
-                        heldMesh.material.color.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
-                        heldMesh.material.emissive.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
-                    }
-                }
-                
-                // Update held boid position
-                if (hand.userData.heldBoidIndex !== null) {
-                    const boid = boids[hand.userData.heldBoidIndex];
-                    heldMesh.position.copy(hand.userData.tipPositions.INDEX);
-                    boid.position.copy(heldMesh.position);
-                    
-                    // Visual feedback for held boid
-                    const holdTime = elapsedTime - hand.userData.holdStartTime;
-                    const pulseFactor = (Math.sin(holdTime * 10) + 1) / 2;
-                    heldMesh.material.emissive.setRGB(0.8 * pulseFactor, 0.2 * pulseFactor, 0.2 * pulseFactor);
-                }
-            });
-            
-            
-            // Update fountain voxels
-            updateFountainVoxels(elapsedTime, deltaTime);
-            
-            // Update Game of Life
-            updateGameOfLife(elapsedTime);
-            
-            // Update Battle Zone tank battle
-            updateTankBattle(deltaTime, elapsedTime);
-            
-            // Update sky battle and starfield
-            updateSkyBattle(deltaTime, elapsedTime);
-            
-            // Update Tron light cycles
-            updateLightCycles(deltaTime, elapsedTime);
-            
-            let activeFountainCount = 0;
-            fountainVoxels.forEach((voxel, i) => {
-                if (voxel && voxel.active) {
-                    dummy.position.copy(voxel.position);
-                    dummy.updateMatrix();
-                    fountainVoxelsMesh.setMatrixAt(activeFountainCount++, dummy.matrix);
-                }
-            });
-            fountainVoxelsMesh.count = activeFountainCount;
-            fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
-            
-            // Ensure fountain mesh is visible
-            if (fountainVoxelsMesh) {
-                fountainVoxelsMesh.visible = true;
-            }
-
-            const aliveVoxelsMesh = scene.getObjectByName('alive_voxels');
-            if (aliveVoxelsMesh && boids.length > 0) {
-                aliveVoxelsMesh.count = boids.length;
-                
-                // Performance optimization: only update flocking every few frames for distant boids
-                const shouldUpdateFlocking = frameCount % OPTIMIZATION_INTERVAL === 0;
-                
-                boids.forEach((boid, i) => {
-                    if (!boid.isGrabbed) {
-                        if (shouldUpdateFlocking || boid.isBeingTossed) {
-                            boid.flock(boids, [hand1, hand2], obstacles);
-                        }
-                        boid.checkBounds();
-                    }
-                    boid.update();
-                    dummy.position.copy(boid.position);
-                    if (boid.velocity.length() > 0.01) {
-                        dummy.lookAt(boid.position.clone().add(boid.velocity));
-                    }
-                    dummy.updateMatrix();
-                    aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
-                });
-                aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
-                
-                // Update predators
-                const predatorMesh = scene.getObjectByName('predators');
-                if (predatorMesh && predators.length > 0) {
-                    predatorMesh.count = predators.length;
-                    predators.forEach((predator, i) => {
-                        try {
-                            if (!predator.isGrabbed) {
-                                predator.hunt(boids);
-                                predator.checkBounds();
-                            }
-                            predator.update();
-                            dummy.position.copy(predator.position);
-                            if (predator.velocity && predator.velocity.length() > 0.01) {
-                                dummy.lookAt(predator.position.clone().add(predator.velocity));
-                            }
-                            dummy.updateMatrix();
-                            predatorMesh.setMatrixAt(i, dummy.matrix);
-                        } catch (error) {
-                            console.warn('Predator update error:', error);
-                        }
-                    });
-                    predatorMesh.instanceMatrix.needsUpdate = true;
-                }
-            }
-        }
-
         function createParticleExplosion(position) {
             try {
                 if (!position) return;
@@ -3504,261 +3206,373 @@
             }
         }
 
-        function initializeGameOfLife() {
-            // Initialize grid with some interesting starting patterns
-            for (let x = 0; x < GRID_SIZE_X; x++) {
-                gameOfLifeGrid[x] = [];
-                for (let y = 0; y < GRID_SIZE_Y; y++) {
-                    gameOfLifeGrid[x][y] = false;
-                }
-            }
-            
-            // Add some classic Conway patterns automatically throughout the height
-            addGliderPattern(2, 2);
-            addGliderPattern(12, 8);
-            addOscillatorPattern(8, 15);
-            addGliderPattern(4, 25);
-            addOscillatorPattern(10, 35);
-            addGliderPattern(6, 45);
-            addOscillatorPattern(2, 55);
-            addGliderPattern(11, 65);
-            addOscillatorPattern(7, 75);
-            
-            // Start the game automatically
-            gameOfLifeRunning = true;
-            console.log('🎮 Game of Life started with predefined patterns!');
-        }
-        
-        function addGliderPattern(startX, startY) {
-            // Classic glider pattern
-            const glider = [
-                [0, 1, 0],
-                [0, 0, 1],
-                [1, 1, 1]
-            ];
-            
-            for (let y = 0; y < glider.length; y++) {
-                for (let x = 0; x < glider[y].length; x++) {
-                    const gridX = startX + x;
-                    const gridY = startY + y;
-                    if (gridX >= 0 && gridX < GRID_SIZE_X && gridY >= 0 && gridY < GRID_SIZE_Y) {
-                        gameOfLifeGrid[gridX][gridY] = glider[y][x] === 1;
-                        if (monolithPanels[gridX] && monolithPanels[gridX][gridY]) {
-                            updatePanelAppearance(monolithPanels[gridX][gridY], glider[y][x] === 1);
-                        }
-                    }
-                }
-            }
-        }
-        
-        function addOscillatorPattern(startX, startY) {
-            // Blinker oscillator pattern
-            const blinker = [
-                [1],
-                [1],
-                [1]
-            ];
-            
-            for (let y = 0; y < blinker.length; y++) {
-                for (let x = 0; x < blinker[y].length; x++) {
-                    const gridX = startX + x;
-                    const gridY = startY + y;
-                    if (gridX >= 0 && gridX < GRID_SIZE_X && gridY >= 0 && gridY < GRID_SIZE_Y) {
-                        gameOfLifeGrid[gridX][gridY] = blinker[y][x] === 1;
-                        if (monolithPanels[gridX] && monolithPanels[gridX][gridY]) {
-                            updatePanelAppearance(monolithPanels[gridX][gridY], blinker[y][x] === 1);
-                        }
-                    }
-                }
-            }
-        }
-        
-        function handleGameOfLifeTouch(hand) {
+        function updateHandData(hand) {
             try {
-                if (!hand.userData.isReady || !hand.userData.tipPositions.INDEX) return;
-                
-                const touchPosition = hand.userData.tipPositions.INDEX;
-                const touchRadius = 0.08;
-                
-                // Check each panel for touch
-                for (let x = 0; x < GRID_SIZE_X; x++) {
-                    for (let y = 0; y < GRID_SIZE_Y; y++) {
-                        if (!monolithPanels[x] || !monolithPanels[x][y]) continue;
-                        
-                        const panel = monolithPanels[x][y];
-                        const distance = touchPosition.distanceTo(panel.position);
-                        
-                        if (distance < touchRadius) {
-                            // Toggle cell state
-                            gameOfLifeGrid[x][y] = !gameOfLifeGrid[x][y];
-                            panel.userData.isAlive = gameOfLifeGrid[x][y];
-                            
-                            // Update panel appearance
-                            updatePanelAppearance(panel, gameOfLifeGrid[x][y]);
-                            
-                            // Play zen sound (placeholder - in real implementation you'd use Web Audio API)
-                            console.log('🎵 Zen touch sound at grid:', x, y);
-                            
-                            // Prevent multiple touches per frame
-                            return;
-                        }
+                if (hand.joints && hand.joints['index-finger-tip'] && hand.joints['thumb-tip'] && hand.joints['middle-finger-tip']) {
+                    hand.userData.isReady = true;
+                    const thumbTip = hand.joints['thumb-tip'].position;
+                    const indexTip = hand.joints['index-finger-tip'].position;
+                    const middleTip = hand.joints['middle-finger-tip'].position;
+                    
+                    // Store previous position for velocity calculation
+                    hand.userData.lastPosition.copy(hand.userData.tipPositions.INDEX);
+                    
+                    hand.userData.tipPositions.THUMB.copy(thumbTip);
+                    hand.userData.tipPositions.INDEX.copy(indexTip);
+                    hand.userData.tipPositions.MIDDLE.copy(middleTip);
+                    
+                    // Update finger indicator position for better hand visibility
+                    if (hand.userData.fingerIndicator) {
+                        hand.userData.fingerIndicator.position.copy(indexTip);
+                        hand.userData.fingerIndicator.position.sub(hand.position);
                     }
+                    
+                    // Update hand indicator with pulsing effect
+                    if (hand.userData.handIndicator && hand.userData.pulsePhase !== undefined) {
+                        const pulseScale = 1.0 + Math.sin(clock.getElapsedTime() * 3.0 + hand.userData.pulsePhase) * 0.3;
+                        hand.userData.handIndicator.scale.setScalar(pulseScale);
+                    }
+                    
+                    // Calculate hand velocity
+                    hand.userData.velocity.subVectors(hand.userData.tipPositions.INDEX, hand.userData.lastPosition);
+                    hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
+                    
+                    // Calculate shake intensity
+                    const currentSpeed = hand.userData.velocity.length();
+                    hand.userData.shakeHistory.push(currentSpeed);
+                    if (hand.userData.shakeHistory.length > 5) { // Shorter history for more responsive shaking
+                        hand.userData.shakeHistory.shift();
+                    }
+                    // Use max speed in recent history instead of average for better shake detection
+                    hand.userData.shakeIntensity = Math.max(...hand.userData.shakeHistory);
+                    
+                    // Improved pinch detection
+                    const thumbIndexDist = thumbTip.distanceTo(indexTip);
+                    const thumbMiddleDist = thumbTip.distanceTo(middleTip);
+                    hand.userData.isPinching = thumbIndexDist < 0.03 || thumbMiddleDist < 0.03;
+                } else {
+                    hand.userData.isReady = false;
                 }
             } catch (error) {
-                console.warn('Game of Life touch error:', error);
+                console.warn('Hand tracking error:', error);
+                hand.userData.isReady = false;
             }
         }
-        
-        function updatePanelAppearance(panel, isAlive) {
-            if (!panel || !panel.material) return;
+
+
+        function update() {
+            const elapsedTime = clock.getElapsedTime();
+            const dummy = new THREE.Object3D();
+            frameCount++;
+            const deltaTime = clock.getDelta();
             
-            if (isAlive) {
-                panel.material.color.setHex(0x00ffaa);
-                if (panel.material.emissive) {
-                    panel.material.emissive.setHex(0x004422);
-                }
-                panel.material.opacity = 0.9;
-            } else {
-                panel.material.color.setHex(0x001122);
-                if (panel.material.emissive) {
-                    panel.material.emissive.setHex(0x000000);
-                }
-                panel.material.opacity = 0.3;
+            // Animate the grid pulse lines for retro effect
+            const gridPulseLines = scene.getObjectByName('gridPulseLines');
+            if (gridPulseLines) {
+                const pulseIntensity = (Math.sin(elapsedTime * 2) + 1) / 2;
+                gridPulseLines.children.forEach(line => {
+                    line.material.opacity = 0.5 + pulseIntensity * 0.4;
+                });
             }
-        }
-        
-        function updateGameOfLife(elapsedTime) {
-            try {
-                // Auto-progress Game of Life
-                if (gameOfLifeRunning && elapsedTime - lastGameOfLifeUpdate > (1.0 / GAME_OF_LIFE_SPEED)) {
-                    stepGameOfLife();
-                    lastGameOfLifeUpdate = elapsedTime;
-                }
-                
-                // Keep the game running continuously
-                if (!gameOfLifeRunning) {
-                    gameOfLifeRunning = true;
-                    console.log('🎮 Game of Life restarted!');
-                }
-            } catch (error) {
-                console.warn('Game of Life update error:', error);
+            
+            // Update punch cooldowns
+            if (punchCooldown1 > 0) {
+                punchCooldown1 -= deltaTime;
             }
-        }
-        
-        function stepGameOfLife() {
-            try {
-                const newGrid = [];
+            if (punchCooldown2 > 0) {
+                punchCooldown2 -= deltaTime;
+            }
+
+            // Only update hand data if XR is active
+            if (renderer.xr.isPresenting) {
+                updateHandData(hand1);
+                updateHandData(hand2);
+                handleGrabbing(hand1, heldVoxelMesh1);
+                handleGrabbing(hand2, heldVoxelMesh2);
                 
-                // Initialize new grid
-                for (let x = 0; x < GRID_SIZE_X; x++) {
-                    newGrid[x] = [];
-                    for (let y = 0; y < GRID_SIZE_Y; y++) {
-                        newGrid[x][y] = false;
-                    }
-                }
+                // Handle Game of Life touch interaction
+                handleGameOfLifeTouch(hand1);
+                handleGameOfLifeTouch(hand2);
                 
-                // Apply Conway's Game of Life rules
-                for (let x = 0; x < GRID_SIZE_X; x++) {
-                    for (let y = 0; y < GRID_SIZE_Y; y++) {
-                        const neighbors = countNeighbors(x, y);
-                        const isAlive = gameOfLifeGrid[x][y];
+                // Handle teleportation (only use right hand to avoid conflicts)
+                handleTeleportation(hand2, elapsedTime);
+                
+                // Handle punch detection
+                [hand1, hand2].forEach((hand, index) => {
+                    try {
+                        const currentCooldown = index === 0 ? punchCooldown1 : punchCooldown2;
+                        if (currentCooldown > 0 || !hand.userData.isReady) return;
                         
-                        if (isAlive) {
-                            // Live cell rules
-                            if (neighbors === 2 || neighbors === 3) {
-                                newGrid[x][y] = true; // Survives
-                            }
-                            // else dies (underpopulation or overpopulation)
+                        hand.userData.isFist = detectFist(hand);
+                    
+                    // Detect punch (fist moving fast) - reduced threshold
+                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.5) {
+                        console.log('PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
+                        punchBlast(hand);
+                        if (index === 0) {
+                            punchCooldown1 = PUNCH_COOLDOWN;
                         } else {
-                            // Dead cell rules
-                            if (neighbors === 3) {
-                                newGrid[x][y] = true; // Birth
-                            }
+                            punchCooldown2 = PUNCH_COOLDOWN;
                         }
                     }
-                }
-                
-                // Update grid and panels
-                let hasChanges = false;
-                for (let x = 0; x < GRID_SIZE_X; x++) {
-                    for (let y = 0; y < GRID_SIZE_Y; y++) {
-                        if (gameOfLifeGrid[x][y] !== newGrid[x][y]) {
-                            hasChanges = true;
-                        }
-                        gameOfLifeGrid[x][y] = newGrid[x][y];
-                        
-                        if (monolithPanels[x] && monolithPanels[x][y]) {
-                            monolithPanels[x][y].userData.isAlive = newGrid[x][y];
-                            updatePanelAppearance(monolithPanels[x][y], newGrid[x][y]);
-                        }
+                    
+                    // Debug punch detection
+                    if (frameCount % 60 === 0 && hand.userData.isFist) {
+                        console.log('Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.5');
                     }
+                    
+                    // Track punch velocity (change in fist position)
+                    if (hand.userData.isFist) {
+                        hand.userData.punchVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
+                    } else {
+                        hand.userData.punchVelocity = 0;
+                    }
+                } catch (error) {
+                    console.warn('Punch detection error:', error);
                 }
-                
-                // If no changes (stable state), add some new random patterns to keep it interesting
-                if (!hasChanges) {
-                    addRandomPattern();
-                    console.log('🎮 Game of Life reached stable state - adding new patterns!');
-                }
-                
+            });
+            }
+            
+            // Update particles
+            try {
+                particles = particles.filter(particle => {
+                    if (!particle || !particle.position || !particle.velocity) return false;
+                    
+                    particle.life -= deltaTime * 2;
+                    if (particle.life <= 0) return false;
+                    
+                    particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
+                    particle.velocity.multiplyScalar(0.98); // Friction
+                    return true;
+                });
             } catch (error) {
-                console.warn('Game of Life step error:', error);
+                console.warn('Particle update error:', error);
+                particles = []; // Clear particles on error
             }
-        }
-        
-        function countNeighbors(x, y) {
-            let count = 0;
-            
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dy = -1; dy <= 1; dy++) {
-                    if (dx === 0 && dy === 0) continue; // Skip center cell
-                    
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    
-                    // Check bounds
-                    if (nx >= 0 && nx < GRID_SIZE_X && ny >= 0 && ny < GRID_SIZE_Y) {
-                        if (gameOfLifeGrid[nx][ny]) {
-                            count++;
-                        }
+
+            // Update held objects for both hands
+            [hand1, hand2].forEach((hand, handIndex) => {
+                // Check if hand tracking data is available
+                if (!hand.userData || !hand.userData.tipPositions || !hand.userData.tipPositions.INDEX) {
+                    return; // Skip if hand tracking not ready
+                }
+                
+                const heldMesh = handIndex === 0 ? heldVoxelMesh1 : heldVoxelMesh2;
+                
+                // Update held voxel (revival mechanic)
+                if (hand.userData.heldVoxelIndex !== null) {
+                    const voxelData = fountainVoxels[hand.userData.heldVoxelIndex];
+                    if (voxelData) {
+                        heldMesh.position.copy(hand.userData.tipPositions.INDEX);
+                        const chargeRatio = Math.min((elapsedTime - hand.userData.holdStartTime) / REVIVAL_TIME, 1.0);
+                        const finalColor = new THREE.Color(0x00ffaa); // Default final color
+                        heldMesh.material.color.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
+                        heldMesh.material.emissive.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
                     }
                 }
-            }
+                
+                // Update held boid position
+                if (hand.userData.heldBoidIndex !== null) {
+                    const boid = boids[hand.userData.heldBoidIndex];
+                    heldMesh.position.copy(hand.userData.tipPositions.INDEX);
+                    boid.position.copy(heldMesh.position);
+                    
+                    // Visual feedback for held boid
+                    const holdTime = elapsedTime - hand.userData.holdStartTime;
+                    const pulseFactor = (Math.sin(holdTime * 10) + 1) / 2;
+                    heldMesh.material.emissive.setRGB(0.8 * pulseFactor, 0.2 * pulseFactor, 0.2 * pulseFactor);
+                }
+            });
             
-            return count;
-        }
-        
-        function addRandomPattern() {
-            // Add random patterns to keep the simulation interesting
-            const patterns = [
-                () => addGliderPattern(Math.floor(Math.random() * (GRID_SIZE_X - 3)), Math.floor(Math.random() * (GRID_SIZE_Y - 3))),
-                () => addOscillatorPattern(Math.floor(Math.random() * (GRID_SIZE_X - 1)), Math.floor(Math.random() * (GRID_SIZE_Y - 3))),
-                () => {
-                    // Random small cluster
-                    const x = Math.floor(Math.random() * (GRID_SIZE_X - 2));
-                    const y = Math.floor(Math.random() * (GRID_SIZE_Y - 2));
-                    for (let dx = 0; dx < 2; dx++) {
-                        for (let dy = 0; dy < 2; dy++) {
-                            if (Math.random() > 0.5) {
-                                gameOfLifeGrid[x + dx][y + dy] = true;
-                                if (monolithPanels[x + dx] && monolithPanels[x + dx][y + dy]) {
-                                    updatePanelAppearance(monolithPanels[x + dx][y + dy], true);
-                                }
+            
+            // Update fountain voxels
+            updateFountainVoxels(elapsedTime, deltaTime);
+            
+            // Update Game of Life
+            updateGameOfLife(elapsedTime);
+            
+            // Update Battle Zone tank battle
+            updateTankBattle(deltaTime, elapsedTime);
+            
+            // Update sky battle and starfield
+            updateSkyBattle(deltaTime, elapsedTime);
+            
+            // Update Tron light cycles
+            updateLightCycles(deltaTime, elapsedTime);
+            
+            let activeFountainCount = 0;
+            fountainVoxels.forEach((voxel, i) => {
+                if (voxel && voxel.active) {
+                    dummy.position.copy(voxel.position);
+                    dummy.updateMatrix();
+                    fountainVoxelsMesh.setMatrixAt(activeFountainCount++, dummy.matrix);
+                }
+            });
+            
+            // Update fountain mesh if it exists
+            if (fountainVoxelsMesh) {
+                fountainVoxelsMesh.count = activeFountainCount;
+                fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
+                fountainVoxelsMesh.visible = true;
+            }
+
+            const aliveVoxelsMesh = scene.getObjectByName('alive_voxels');
+            if (aliveVoxelsMesh && boids.length > 0) {
+                aliveVoxelsMesh.count = boids.length;
+                
+                // Performance optimization: only update flocking every few frames for distant boids
+                const shouldUpdateFlocking = frameCount % OPTIMIZATION_INTERVAL === 0;
+                
+                boids.forEach((boid, i) => {
+                    if (!boid.isGrabbed) {
+                        if (shouldUpdateFlocking || boid.isBeingTossed) {
+                            boid.flock(boids, [hand1, hand2], obstacles, predators);
+                        }
+                        boid.checkBounds();
+                    }
+                    boid.update();
+                    dummy.position.copy(boid.position);
+                    if (boid.velocity.length() > 0.01) {
+                        dummy.lookAt(boid.position.clone().add(boid.velocity));
+                    }
+                    dummy.updateMatrix();
+                    aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
+                });
+                aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
+                
+                // Update predators
+                const predatorMesh = scene.getObjectByName('predators');
+                if (predatorMesh && predators.length > 0) {
+                    predatorMesh.count = predators.length;
+                    predators.forEach((predator, i) => {
+                        try {
+                            if (!predator.isGrabbed) {
+                                predator.hunt(boids);
+                                predator.checkBounds();
                             }
+                            predator.update();
+                            dummy.position.copy(predator.position);
+                            if (predator.velocity && predator.velocity.length() > 0.01) {
+                                dummy.lookAt(predator.position.clone().add(predator.velocity));
+                            }
+                            dummy.updateMatrix();
+                            predatorMesh.setMatrixAt(i, dummy.matrix);
+                        } catch (error) {
+                            console.warn('Predator update error:', error);
                         }
-                    }
+                    });
+                    predatorMesh.instanceMatrix.needsUpdate = true;
                 }
-            ];
-            
-            // Add 1-3 random patterns
-            const numPatterns = Math.floor(Math.random() * 3) + 1;
-            for (let i = 0; i < numPatterns; i++) {
-                const randomPattern = patterns[Math.floor(Math.random() * patterns.length)];
-                randomPattern();
             }
         }
 
         function render() { renderer.render(scene, camera); }
         function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+
+        function init() {
+            // Initialize Three.js scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            
+            // Initialize camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 3);
+            
+            // Initialize renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+            
+            // Initialize clock
+            clock = new THREE.Clock();
+            
+            // Setup WebXR
+            renderer.xr.enabled = true;
+            document.body.appendChild(VRButton.createButton(renderer));
+            
+            // Add hand tracking
+            const handModelFactory = new XRHandModelFactory();
+            hand1 = renderer.xr.getHand(0);
+            hand1.add(handModelFactory.createHandModel(hand1));
+            scene.add(hand1);
+            
+            hand2 = renderer.xr.getHand(1);
+            hand2.add(handModelFactory.createHandModel(hand2));
+            scene.add(hand2);
+            
+            // Initialize hand userData
+            [hand1, hand2].forEach(hand => {
+                hand.userData = {
+                    tipPositions: {
+                        THUMB: new THREE.Vector3(),
+                        INDEX: new THREE.Vector3(),
+                        MIDDLE: new THREE.Vector3()
+                    },
+                    lastPosition: new THREE.Vector3(),
+                    velocity: new THREE.Vector3(),
+                    shakeHistory: [0, 0, 0, 0, 0],
+                    shakeIntensity: 0,
+                    isPinching: false,
+                    isFist: false,
+                    isReady: false,
+                    heldVoxelIndex: null,
+                    heldBoidIndex: null,
+                    holdStartTime: 0,
+                    isGrabbingBoid: false,
+                    punchVelocity: 0
+                };
+            });
+            
+            // Setup lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            // Create boids
+            for (let i = 0; i < initialBoidCount; i++) {
+                const boid = new Boid(
+                    new THREE.Vector3(
+                        (Math.random() - 0.5) * boundSize,
+                        Math.random() * 5 + 1,
+                        (Math.random() - 0.5) * boundSize
+                    )
+                );
+                boids.push(boid);
+            }
+            
+            // Create world content
+            createVectorGridGround();
+            createTronTrees();
+            createFountain();
+            createGameOfLifeMonolith();
+            createTankBattlefield();
+            createSpaceBattle();
+            createLightCycleRacing();
+            
+            // Setup event listeners
+            window.addEventListener('resize', onWindowResize);
+            
+            // Add fallback controls for desktop
+            addFallbackControls();
+            
+            // Start animation loop
+            renderer.setAnimationLoop(animate);
+        }
+        
+        function animate() {
+            update();
+            render();
+        }
+
+        // Call init after all definitions
+        init();
     </script>
 </body>
 </html>
