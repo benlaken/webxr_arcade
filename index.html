@@ -73,6 +73,8 @@
         let boids = [];
         let predators = [];
         let particles = [];
+        let particlePool = []; // Object pool for particles
+        const PARTICLE_POOL_SIZE = 100;
         let hand1, hand2;
         
         let interactiveVoxels = [];
@@ -103,59 +105,132 @@
         const PUNCH_COOLDOWN = 0.5; // Seconds between punches
         const PUNCH_FORCE_RADIUS = 2.0; // Radius of punch force blast
         
-        // Performance optimization variables
+        // Performance optimization variables - Aggressive for 120fps Quest 3
         let frameCount = 0;
-        const OPTIMIZATION_INTERVAL = 25; // Update every 25 frames (further increased for better performance)
+        const OPTIMIZATION_INTERVAL = 40; // Reduced frequency for 120fps
+        const SPACE_UPDATE_INTERVAL = 120; // Update stars every 120 frames (1 second at 120fps)
+        const ORBITAL_UPDATE_INTERVAL = 60; // Update asteroids every 60 frames (0.5 seconds)
+        const PARTICLE_UPDATE_INTERVAL = 30; // Update particles every 30 frames
+        const FOUNTAIN_UPDATE_INTERVAL = 20; // Update fountain every 20 frames
         
-        // Battle Zone tank system
-        let tanks = [];
-        let projectiles = [];
-        const TANK_COUNT = 8; // Increased for more dramatic tank battles
-        const BATTLEFIELD_MIN_DISTANCE = 12; // Much closer for VR visibility
-        const BATTLEFIELD_MAX_DISTANCE = 25; // Much closer battlefield for visibility
-        const TANK_SPEED = 3.0; // Much faster for dramatic VR battles
-        const PROJECTILE_SPEED = 4.0; // Faster projectiles
-        const TANK_FIRE_RATE = 0.8; // Increased fire rate for more action
-        const TANK_DETECTION_RANGE = 18; // Increased detection range
+        // Level-of-Detail (LOD) system for 120fps
+        const LOD_DISTANCES = {
+            CLOSE: 10,    // Full detail
+            MEDIUM: 30,   // Reduced detail
+            FAR: 60       // Minimal detail
+        };
         
-        // Sky Asteroids system
+        // Frame rate monitoring for dynamic scaling
+        let frameRateHistory = [];
+        let currentQualityLevel = 1.0; // 1.0 = full quality, 0.5 = half quality
+        const TARGET_FRAME_RATE = 120;
+        const MIN_FRAME_RATE = 90;
+        
+        // Temporal update spreading for 120fps
+        let updateQueues = {
+            gameOfLife: 0,
+            fountain: 0,
+            skyBattle: 0,
+            particles: 0
+        };
+        const TEMPORAL_SPREAD_FRAMES = 8; // Spread updates across 8 frames
+        
+        // Spatial partitioning for collision detection optimization
+        class SpatialGrid {
+            constructor(cellSize = 5.0) {
+                this.cellSize = cellSize;
+                this.grid = new Map();
+            }
+            
+            clear() {
+                this.grid.clear();
+            }
+            
+            getKey(x, y, z) {
+                const gx = Math.floor(x / this.cellSize);
+                const gy = Math.floor(y / this.cellSize);
+                const gz = Math.floor(z / this.cellSize);
+                return `${gx},${gy},${gz}`;
+            }
+            
+            insert(object) {
+                const key = this.getKey(object.position.x, object.position.y, object.position.z);
+                if (!this.grid.has(key)) {
+                    this.grid.set(key, []);
+                }
+                this.grid.get(key).push(object);
+            }
+            
+            getNearby(position, radius = 1.0) {
+                const nearby = [];
+                const cellsToCheck = Math.ceil(radius / this.cellSize);
+                
+                for (let dx = -cellsToCheck; dx <= cellsToCheck; dx++) {
+                    for (let dy = -cellsToCheck; dy <= cellsToCheck; dy++) {
+                        for (let dz = -cellsToCheck; dz <= cellsToCheck; dz++) {
+                            const key = this.getKey(
+                                position.x + dx * this.cellSize,
+                                position.y + dy * this.cellSize,
+                                position.z + dz * this.cellSize
+                            );
+                            const cell = this.grid.get(key);
+                            if (cell) {
+                                nearby.push(...cell);
+                            }
+                        }
+                    }
+                }
+                return nearby;
+            }
+        }
+        
+        const spatialGrid = new SpatialGrid(3.0); // 3 unit cells for boid flocking
+        
+        // Frustum culling
+        const frustum = new THREE.Frustum();
+        const cameraMatrix = new THREE.Matrix4();
+        const CULLING_DISTANCE = 100; // Distance beyond which objects are culled
+        
+        // Shared materials for performance optimization
+        const sharedMaterials = {
+            boidMaterial: null,
+            particleMaterial: null,
+            starMaterial: null,
+            spaceMaterial: null,
+            fountainMaterial: null
+        };
+        
+        
+        // Three-layer sky system
         let stars = [];
         let asteroids = [];
         let spaceShips = [];
         let spaceBullets = [];
         let shootingStars = [];
-        const STAR_COUNT = 100; // Reduced for Quest performance
-        const ASTEROID_COUNT = 6; // Reduced for Quest performance
-        const SPACESHIP_COUNT = 1; // Single active hunter spaceship
-        const SKY_HEIGHT = 15; // Lower height for better visibility
-        const SKY_RADIUS = 25; // Smaller radius for closer action
-        const ASTEROID_SPEED = 5.0; // Much faster for dramatic movement
-        const SPACESHIP_SPEED = 8.0; // Much faster for aggressive hunting
+        
+        // Layer 1: Atmosphere (0-30m above user) - Boids flight zone
+        const ATMOSPHERE_MIN_HEIGHT = 0;
+        const ATMOSPHERE_MAX_HEIGHT = 30;
+        const ATMOSPHERE_RADIUS = 40;
+        
+        // Layer 2: Orbital Space (30-60m above user) - Asteroids simulation
+        const ORBITAL_MIN_HEIGHT = 30;
+        const ORBITAL_MAX_HEIGHT = 60;
+        const ORBITAL_RADIUS = 35;
+        const ASTEROID_COUNT = 6;
+        const SPACESHIP_COUNT = 1;
+        const ASTEROID_SPEED = 5.0;
+        const SPACESHIP_SPEED = 8.0;
         const SPACE_BULLET_SPEED = 8.0;
-        const SHOOTING_STAR_SPAWN_RATE = 0.05; // Chance per second
+        
+        // Layer 3: Space (60m+ above user) - Distant starfield
+        const SPACE_MIN_HEIGHT = 60;
+        const SPACE_MAX_HEIGHT = 100;
+        const SPACE_RADIUS = 60;
+        const STAR_COUNT = 150; // More stars for distant effect
+        const SHOOTING_STAR_SPAWN_RATE = 0.05;
         const SHOOTING_STAR_SPEED = 15.0;
         
-        // Tron Light Cycles Racing system
-        let lightCycles = [];
-        let lightTrails = [];
-        const LIGHT_CYCLE_COUNT = 2;
-        const CYCLE_SPEED = 8.0; // Moderate speed for strategic racing
-        const RACE_TRACK_LENGTH = 30; // Length of racing track
-        const RACE_LANE_WIDTH = 4; // Distance between racing lanes
-        const TRAIL_SEGMENT_LENGTH = 0.3; // Closer trail segments for denser walls
-        const TRAIL_LIFETIME = 30; // Longer lifetime for persistent light walls
-        const RACE_RESET_TIME = 8; // Seconds before race resets after winner
-        
-        // Track dimensions and positioning
-        const TRACK_CENTER_X = -15; // X position of track center
-        const TRACK_CENTER_Z = 15; // Z position of track center  
-        const TRACK_WIDTH = 20; // Width of racing track
-        const TRACK_HEIGHT = 25; // Height of racing track
-        
-        // Racing state management
-        let raceState = 'racing'; // 'racing', 'victory', 'resetting'
-        let raceWinner = null;
-        let raceEndTime = 0;
         
         // Teleportation system
         let teleportRaycaster = new THREE.Raycaster();
@@ -171,312 +246,16 @@
         // --- NEW: Obstacles for boids to avoid ---
         let obstacles = []; // Will be populated when trees are created
         
-        // --- Battle Zone Tank Class ---
-        class BattleTank {
-            constructor(position, team) {
-                this.position = position || new THREE.Vector3();
-                this.rotation = Math.random() * Math.PI * 2;
-                this.velocity = new THREE.Vector3();
-                this.team = team || 0; // 0 or 1 for different teams
-                this.health = 3;
-                this.lastFireTime = 0;
-                this.target = null;
-                this.mesh = null;
-                this.turretRotation = 0;
-                this.state = 'patrol'; // patrol, engage, retreat
-                this.patrolTarget = this.generatePatrolTarget();
-                this.maxSpeed = TANK_SPEED;
-                this.isMoving = false; // Track movement state for debugging
-                
-                this.createMesh();
-            }
-            
-            createMesh() {
-                const tankGroup = new THREE.Group();
-                
-                // Tank body (larger wireframe box for VR visibility)
-                const bodyGeometry = new THREE.BoxGeometry(2.4, 1.6, 4.0); // 2x larger for VR
-                const bodyMaterial = new THREE.MeshLambertMaterial({ 
-                    color: this.team === 0 ? 0x00ff00 : 0xff0000,
-                    wireframe: true,
-                    transparent: false, // Solid for better visibility
-                    opacity: 1.0,
-                    emissive: this.team === 0 ? 0x004400 : 0x440000 // Emissive glow
-                });
-                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-                body.position.y = 0.4;
-                tankGroup.add(body);
-                
-                // Tank turret (wireframe cylinder)
-                const turretGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 8);
-                const turretMaterial = new THREE.MeshBasicMaterial({ 
-                    color: this.team === 0 ? 0x00aa00 : 0xaa0000,
-                    wireframe: true,
-                    transparent: true,
-                    opacity: 0.9
-                });
-                const turret = new THREE.Mesh(turretGeometry, turretMaterial);
-                turret.position.y = 1.0;
-                tankGroup.add(turret);
-                
-                // Tank barrel (wireframe cylinder)
-                const barrelGeometry = new THREE.CylinderGeometry(0.08, 0.08, 1.5, 6);
-                const barrelMaterial = new THREE.MeshBasicMaterial({ 
-                    color: this.team === 0 ? 0x00ff00 : 0xff0000,
-                    wireframe: true,
-                    transparent: true,
-                    opacity: 1.0
-                });
-                const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
-                barrel.rotation.z = Math.PI / 2;
-                barrel.position.set(0.75, 1.0, 0);
-                turret.add(barrel);
-                
-                this.mesh = tankGroup;
-                this.turret = turret;
-                this.barrel = barrel;
-                scene.add(tankGroup);
-            }
-            
-            generatePatrolTarget() {
-                const angle = Math.random() * Math.PI * 2;
-                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
-                // Generate patrol targets relative to VR user position (8, 1.8, 8)
-                return new THREE.Vector3(
-                    8 + Math.cos(angle) * distance,
-                    0.5, // Slightly above ground
-                    8 + Math.sin(angle) * distance
-                );
-            }
-            
-            update(deltaTime, elapsedTime) {
-                if (this.health <= 0) return;
-                
-                // Find nearest enemy tank
-                this.findTarget();
-                
-                // Update AI state
-                this.updateAI(deltaTime);
-                
-                // Update movement
-                this.updateMovement(deltaTime);
-                
-                // Update mesh position and rotation
-                if (this.mesh) {
-                    this.mesh.position.copy(this.position);
-                    this.mesh.rotation.y = this.rotation;
-                    
-                    // Track if tank is actually moving
-                    const wasMoving = this.isMoving;
-                    this.isMoving = this.velocity.length() > 0.1;
-                    
-                    // Occasional debug output for tank activity
-                    if (!wasMoving && this.isMoving && Math.random() < 0.1) {
-                        console.log(`🚜 Tank (team ${this.team}) moving: ${this.state}`);
-                    }
-                }
-                
-                // Update turret rotation towards target
-                if (this.target && this.turret) {
-                    const targetDirection = new THREE.Vector3().subVectors(this.target.position, this.position);
-                    this.turretRotation = Math.atan2(targetDirection.x, targetDirection.z);
-                    this.turret.rotation.y = this.turretRotation - this.rotation;
-                }
-                
-                // Try to fire
-                this.tryFire(elapsedTime);
-            }
-            
-            findTarget() {
-                let closestEnemy = null;
-                let closestDistance = TANK_DETECTION_RANGE;
-                
-                for (const tank of tanks) {
-                    if (tank === this || tank.team === this.team || tank.health <= 0) continue;
-                    
-                    const distance = this.position.distanceTo(tank.position);
-                    if (distance < closestDistance) {
-                        closestEnemy = tank;
-                        closestDistance = distance;
-                    }
-                }
-                
-                this.target = closestEnemy;
-            }
-            
-            updateAI(deltaTime) {
-                if (this.target) {
-                    this.state = 'engage';
-                } else if (this.position.distanceTo(this.patrolTarget) < 2.0) {
-                    this.patrolTarget = this.generatePatrolTarget();
-                    this.state = 'patrol';
-                } else {
-                    this.state = 'patrol';
-                }
-            }
-            
-            updateMovement(deltaTime) {
-                let targetPos = this.patrolTarget;
-                
-                if (this.state === 'engage' && this.target) {
-                    // More aggressive movement towards enemy
-                    const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
-                    const distance = toTarget.length();
-                    
-                    if (distance > 10.0) {
-                        // Move directly towards target
-                        targetPos = this.target.position;
-                    } else if (distance < 6.0) {
-                        // Retreat slightly to maintain firing distance
-                        targetPos = new THREE.Vector3().subVectors(this.position, toTarget.normalize().multiplyScalar(4));
-                    } else {
-                        // Circle around target for tactical positioning
-                        const perpendicular = new THREE.Vector3(-toTarget.z, 0, toTarget.x).normalize();
-                        targetPos = new THREE.Vector3().addVectors(this.position, perpendicular.multiplyScalar(3));
-                    }
-                } else {
-                    // More active patrolling when no target
-                    const distanceToPatrol = this.position.distanceTo(this.patrolTarget);
-                    if (distanceToPatrol < 3.0) {
-                        this.patrolTarget = this.generatePatrolTarget();
-                    }
-                }
-                
-                // Move towards target position with improved movement
-                const direction = new THREE.Vector3().subVectors(targetPos, this.position);
-                direction.y = 0; // Keep on ground
-                
-                if (direction.length() > 0.2) {
-                    direction.normalize();
-                    const speedMultiplier = this.state === 'engage' ? 1.2 : 0.8; // Faster when engaging
-                    this.velocity.lerp(direction.multiplyScalar(this.maxSpeed * speedMultiplier), deltaTime * 3.0);
-                    this.rotation = Math.atan2(this.velocity.x, this.velocity.z);
-                }
-                
-                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
-                this.position.y = 0; // Keep on ground
-            }
-            
-            tryFire(elapsedTime) {
-                if (!this.target || this.health <= 0) return;
-                if (elapsedTime - this.lastFireTime < (1.0 / TANK_FIRE_RATE)) return;
-                
-                const distance = this.position.distanceTo(this.target.position);
-                if (distance > TANK_DETECTION_RANGE) return;
-                
-                // Fire projectile
-                this.fire();
-                this.lastFireTime = elapsedTime;
-            }
-            
-            fire() {
-                if (!this.barrel) return;
-                
-                const barrelEnd = new THREE.Vector3();
-                this.barrel.getWorldPosition(barrelEnd);
-                
-                const direction = new THREE.Vector3().subVectors(this.target.position, barrelEnd);
-                direction.y += 0.5; // Slight upward trajectory
-                direction.normalize();
-                
-                const projectile = new Projectile(barrelEnd.clone(), direction, this.team, this);
-                projectiles.push(projectile);
-                
-                console.log(`🔥 Tank (team ${this.team}) fired at enemy!`);
-            }
-            
-            takeDamage() {
-                this.health--;
-                if (this.health <= 0) {
-                    this.destroy();
-                }
-            }
-            
-            destroy() {
-                if (this.mesh) {
-                    scene.remove(this.mesh);
-                    this.mesh = null;
-                }
-                console.log('💥 Tank destroyed!');
-            }
-        }
         
-        // --- Projectile Class ---
-        class Projectile {
-            constructor(position, direction, team, shooter) {
-                this.position = position.clone();
-                this.velocity = direction.clone().multiplyScalar(PROJECTILE_SPEED);
-                this.team = team;
-                this.shooter = shooter;
-                this.life = 5.0; // Seconds before disappearing
-                this.mesh = null;
-                
-                this.createMesh();
-            }
-            
-            createMesh() {
-                const geometry = new THREE.SphereGeometry(0.05, 6, 6);
-                const material = new THREE.MeshBasicMaterial({ 
-                    color: this.team === 0 ? 0x00ffff : 0xffff00,
-                    transparent: true,
-                    opacity: 0.9
-                });
-                this.mesh = new THREE.Mesh(geometry, material);
-                this.mesh.position.copy(this.position);
-                scene.add(this.mesh);
-            }
-            
-            update(deltaTime) {
-                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
-                this.life -= deltaTime;
-                
-                if (this.mesh) {
-                    this.mesh.position.copy(this.position);
-                }
-                
-                // Check collision with tanks
-                for (const tank of tanks) {
-                    if (tank === this.shooter || tank.team === this.team || tank.health <= 0) continue;
-                    
-                    const distance = this.position.distanceTo(tank.position);
-                    if (distance < 1.5) {
-                        tank.takeDamage();
-                        this.explode();
-                        return true; // Mark for removal
-                    }
-                }
-                
-                // Remove if life expired or hit ground
-                if (this.life <= 0 || this.position.y < -1) {
-                    this.destroy();
-                    return true; // Mark for removal
-                }
-                
-                return false;
-            }
-            
-            explode() {
-                // Create explosion effect
-                createProjectileExplosion(this.position.clone());
-                this.destroy();
-            }
-            
-            destroy() {
-                if (this.mesh) {
-                    scene.remove(this.mesh);
-                    this.mesh = null;
-                }
-            }
-        }
         
         // --- Sky Asteroids Classes ---
         class Star {
             constructor() {
-                // Adjust position for VR scene offset (8, 1.8, 8) - stars at highest layer
+                // Position in distant space layer (60m+ above user)
                 this.position = new THREE.Vector3(
-                    8 + (Math.random() - 0.5) * SKY_RADIUS * 2,
-                    1.8 + SKY_HEIGHT + 25 + Math.random() * 15, // Much higher than asteroids (Y=35-50)
-                    8 + (Math.random() - 0.5) * SKY_RADIUS * 2
+                    (Math.random() - 0.5) * SPACE_RADIUS,
+                    SPACE_MIN_HEIGHT + Math.random() * (SPACE_MAX_HEIGHT - SPACE_MIN_HEIGHT),
+                    (Math.random() - 0.5) * SPACE_RADIUS
                 );
                 this.brightness = Math.random() * 0.8 + 0.2;
                 this.twinkleSpeed = Math.random() * 2 + 1;
@@ -486,7 +265,7 @@
             }
             
             createMesh() {
-                const geometry = new THREE.SphereGeometry(0.1, 8, 8); // Much larger and higher quality for VR visibility
+                const geometry = new THREE.SphereGeometry(0.1, 6, 6); // Reduced complexity for VR performance
                 const material = new THREE.MeshBasicMaterial({ 
                     color: 0xffffff,
                     transparent: true,
@@ -507,11 +286,11 @@
         
         class Asteroid {
             constructor(position, size = 'large') {
-                // Adjust position for VR scene offset (8, 1.8, 8)
+                // Position in orbital space layer (30-60m above user)
                 this.position = position || new THREE.Vector3(
-                    8 + (Math.random() - 0.5) * SKY_RADIUS,
-                    1.8 + SKY_HEIGHT + Math.random() * 10,
-                    8 + (Math.random() - 0.5) * SKY_RADIUS
+                    (Math.random() - 0.5) * ORBITAL_RADIUS,
+                    ORBITAL_MIN_HEIGHT + Math.random() * (ORBITAL_MAX_HEIGHT - ORBITAL_MIN_HEIGHT),
+                    (Math.random() - 0.5) * ORBITAL_RADIUS
                 );
                 this.velocity = new THREE.Vector3(
                     (Math.random() - 0.5) * ASTEROID_SPEED * 2.0, // Much more varied movement
@@ -559,18 +338,25 @@
                     this.mesh.rotation.z += this.rotation.z;
                 }
                 
-                // Wrap around sky boundaries (adjusted for VR offset)
-                if (Math.abs(this.position.x - 8) > SKY_RADIUS) {
-                    this.position.x = 8 - Math.sign(this.position.x - 8) * SKY_RADIUS;
+                // Wrap around orbital space boundaries (30-60m layer)
+                const halfRadius = ORBITAL_RADIUS / 2;
+                if (this.position.x > halfRadius) {
+                    this.position.x = -halfRadius;
                 }
-                if (Math.abs(this.position.z - 8) > SKY_RADIUS) {
-                    this.position.z = 8 - Math.sign(this.position.z - 8) * SKY_RADIUS;
+                if (this.position.x < -halfRadius) {
+                    this.position.x = halfRadius;
                 }
-                if (this.position.y < 1.8 + SKY_HEIGHT - 5) {
-                    this.position.y = 1.8 + SKY_HEIGHT + 15;
+                if (this.position.z > halfRadius) {
+                    this.position.z = -halfRadius;
                 }
-                if (this.position.y > 1.8 + SKY_HEIGHT + 15) {
-                    this.position.y = 1.8 + SKY_HEIGHT - 5;
+                if (this.position.z < -halfRadius) {
+                    this.position.z = halfRadius;
+                }
+                if (this.position.y < ORBITAL_MIN_HEIGHT) {
+                    this.position.y = ORBITAL_MAX_HEIGHT;
+                }
+                if (this.position.y > ORBITAL_MAX_HEIGHT) {
+                    this.position.y = ORBITAL_MIN_HEIGHT;
                 }
                 
                 // Enhanced debug logging for asteroid movement
@@ -628,11 +414,11 @@
         
         class SpaceShip {
             constructor() {
-                // Adjust position for VR scene offset (8, 1.8, 8)
+                // Position in orbital space layer (30-60m above user)
                 this.position = new THREE.Vector3(
-                    8 + (Math.random() - 0.5) * SKY_RADIUS,
-                    1.8 + SKY_HEIGHT + Math.random() * 10,
-                    8 + (Math.random() - 0.5) * SKY_RADIUS
+                    (Math.random() - 0.5) * ORBITAL_RADIUS,
+                    ORBITAL_MIN_HEIGHT + Math.random() * (ORBITAL_MAX_HEIGHT - ORBITAL_MIN_HEIGHT),
+                    (Math.random() - 0.5) * ORBITAL_RADIUS
                 );
                 this.velocity = new THREE.Vector3();
                 this.rotation = Math.random() * Math.PI * 2;
@@ -662,7 +448,7 @@
                 shipGroup.add(ship);
                 
                 // Add bright markers for visibility
-                const markerGeometry = new THREE.SphereGeometry(0.6, 8, 8); // Moderate markers for VR
+                const markerGeometry = new THREE.SphereGeometry(0.6, 6, 6); // Reduced complexity for VR performance
                 const markerMaterial = new THREE.MeshLambertMaterial({
                     color: 0xffff00,
                     emissive: 0xffff00,
@@ -674,7 +460,7 @@
                 shipGroup.add(marker);
                 
                 // Add pulsing effect marker
-                const pulseGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+                const pulseGeometry = new THREE.SphereGeometry(0.5, 6, 6);
                 const pulseMaterial = new THREE.MeshLambertMaterial({
                     color: 0xff0080,
                     emissive: 0xff0080,
@@ -728,12 +514,25 @@
                     }
                 }
                 
-                // Wrap around boundaries (adjusted for VR offset)
-                if (Math.abs(this.position.x - 8) > SKY_RADIUS) {
-                    this.position.x = 8 - Math.sign(this.position.x - 8) * SKY_RADIUS;
+                // Wrap around orbital space boundaries (30-60m layer)
+                const halfRadius = ORBITAL_RADIUS / 2;
+                if (this.position.x > halfRadius) {
+                    this.position.x = -halfRadius;
                 }
-                if (Math.abs(this.position.z - 8) > SKY_RADIUS) {
-                    this.position.z = 8 - Math.sign(this.position.z - 8) * SKY_RADIUS;
+                if (this.position.x < -halfRadius) {
+                    this.position.x = halfRadius;
+                }
+                if (this.position.z > halfRadius) {
+                    this.position.z = -halfRadius;
+                }
+                if (this.position.z < -halfRadius) {
+                    this.position.z = halfRadius;
+                }
+                if (this.position.y < ORBITAL_MIN_HEIGHT) {
+                    this.position.y = ORBITAL_MAX_HEIGHT;
+                }
+                if (this.position.y > ORBITAL_MAX_HEIGHT) {
+                    this.position.y = ORBITAL_MIN_HEIGHT;
                 }
                 
                 // Try to fire
@@ -861,7 +660,7 @@
             }
             
             createMesh() {
-                const geometry = new THREE.SphereGeometry(0.08, 6, 6);
+                const geometry = new THREE.SphereGeometry(0.08, 4, 4); // Further reduced for performance
                 const material = new THREE.MeshBasicMaterial({ 
                     color: 0xffff00,
                     transparent: true,
@@ -917,46 +716,46 @@
         
         class ShootingStar {
             constructor() {
-                // Start from random edge of sky area
+                // Start from random edge of space layer area
                 const side = Math.floor(Math.random() * 4);
-                const skySize = SKY_RADIUS * 1.5;
+                const spaceSize = SPACE_RADIUS * 1.5;
                 
-                // Adjust all positions for VR scene offset (8, 1.8, 8)
+                // Position in space layer (60m+ above user)
                 switch(side) {
                     case 0: // Top
                         this.position = new THREE.Vector3(
-                            8 + (Math.random() - 0.5) * skySize,
-                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
-                            8 + skySize
+                            (Math.random() - 0.5) * spaceSize,
+                            SPACE_MIN_HEIGHT + Math.random() * (SPACE_MAX_HEIGHT - SPACE_MIN_HEIGHT),
+                            spaceSize
                         );
                         break;
                     case 1: // Right
                         this.position = new THREE.Vector3(
-                            8 + skySize,
-                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
-                            8 + (Math.random() - 0.5) * skySize
+                            spaceSize,
+                            SPACE_MIN_HEIGHT + Math.random() * (SPACE_MAX_HEIGHT - SPACE_MIN_HEIGHT),
+                            (Math.random() - 0.5) * spaceSize
                         );
                         break;
                     case 2: // Bottom
                         this.position = new THREE.Vector3(
-                            8 + (Math.random() - 0.5) * skySize,
-                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
-                            8 + (-skySize)
+                            (Math.random() - 0.5) * spaceSize,
+                            SPACE_MIN_HEIGHT + Math.random() * (SPACE_MAX_HEIGHT - SPACE_MIN_HEIGHT),
+                            -spaceSize
                         );
                         break;
                     case 3: // Left
                         this.position = new THREE.Vector3(
-                            8 + (-skySize),
-                            1.8 + SKY_HEIGHT + 25 + Math.random() * 10,
-                            8 + (Math.random() - 0.5) * skySize
+                            -spaceSize,
+                            SPACE_MIN_HEIGHT + Math.random() * (SPACE_MAX_HEIGHT - SPACE_MIN_HEIGHT),
+                            (Math.random() - 0.5) * spaceSize
                         );
                         break;
                 }
                 
-                // Create velocity toward opposite side with downward angle (adjusted for VR offset)
-                const targetX = 8 + (Math.random() - 0.5) * skySize;
-                const targetY = 1.8 + SKY_HEIGHT + Math.random() * 15;
-                const targetZ = 8 + (Math.random() - 0.5) * skySize;
+                // Create velocity toward opposite side within space layer
+                const targetX = (Math.random() - 0.5) * spaceSize;
+                const targetY = SPACE_MIN_HEIGHT + Math.random() * (SPACE_MAX_HEIGHT - SPACE_MIN_HEIGHT);
+                const targetZ = (Math.random() - 0.5) * spaceSize;
                 
                 const direction = new THREE.Vector3(targetX, targetY, targetZ).sub(this.position);
                 direction.normalize();
@@ -971,7 +770,7 @@
             }
             
             createMesh() {
-                const starGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+                const starGeometry = new THREE.SphereGeometry(0.15, 4, 4); // Reduced complexity for background stars
                 const starMaterial = new THREE.MeshBasicMaterial({ 
                     color: 0xffffaa,
                     transparent: true,
@@ -1024,7 +823,7 @@
             createTrailParticle(elapsedTime) {
                 // Create trail particle every few frames
                 if (Math.random() < 0.3) {
-                    const trailGeometry = new THREE.SphereGeometry(0.05, 4, 4);
+                    const trailGeometry = new THREE.SphereGeometry(0.05, 3, 3); // Minimal for trail particles
                     const trailMaterial = new THREE.MeshBasicMaterial({ 
                         color: 0xffffff,
                         transparent: true,
@@ -1058,383 +857,7 @@
             }
         }
         
-        // --- Tron Light Cycle Racing Classes ---
-        class LightCycle {
-            constructor(teamColor, lane, cycleId) {
-                this.cycleId = cycleId; // 0 or 1 for identification
-                this.lane = lane; // 0 = left lane, 1 = right lane
-                
-                // Start positions side by side at VR user location + offset
-                const startX = 8 + 15; // 15 units away from user
-                const startZ = 8 + (lane === 0 ? -RACE_LANE_WIDTH/2 : RACE_LANE_WIDTH/2);
-                
-                this.startPosition = new THREE.Vector3(startX, 0.5, startZ);
-                this.position = this.startPosition.clone();
-                this.velocity = new THREE.Vector3();
-                this.direction = 0; // Start facing forward (along X axis)
-                this.speed = CYCLE_SPEED;
-                this.teamColor = teamColor;
-                this.mesh = null;
-                this.lastTrailTime = 0;
-                this.isAlive = true;
-                this.trailSegments = [];
-                
-                // Racing AI behavior
-                this.nextTurnTime = Date.now() + (2000 + Math.random() * 4000);
-                this.aggressiveness = Math.random() * 0.5 + 0.3; // How likely to make risky moves
-                this.racingStrategy = Math.random() > 0.5 ? 'aggressive' : 'defensive';
-                
-                this.createMesh();
-                this.setInitialVelocity();
-            }
-            
-            createMesh() {
-                const cycleGroup = new THREE.Group();
-                
-                // Larger, more visible main body for Quest 3
-                const bodyGeometry = new THREE.BoxGeometry(1.2, 0.6, 3.0);
-                const bodyMaterial = new THREE.MeshLambertMaterial({ 
-                    color: this.teamColor,
-                    wireframe: true,
-                    transparent: true,
-                    opacity: 1.0,
-                    emissive: this.teamColor
-                });
-                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-                body.position.y = 0.4; // Raised higher above ground
-                cycleGroup.add(body);
-                
-                // Enhanced light strips for better visibility
-                const stripGeometry = new THREE.BoxGeometry(1.3, 0.1, 3.1);
-                const stripMaterial = new THREE.MeshLambertMaterial({ 
-                    color: this.teamColor,
-                    transparent: true,
-                    opacity: 1.0,
-                    emissive: this.teamColor
-                });
-                
-                // Top strip
-                const topStrip = new THREE.Mesh(stripGeometry, stripMaterial);
-                topStrip.position.y = 0.75; // Raised with body
-                cycleGroup.add(topStrip);
-                
-                // Bottom strip
-                const bottomStrip = new THREE.Mesh(stripGeometry, stripMaterial);
-                bottomStrip.position.y = 0.25; // Above ground level
-                cycleGroup.add(bottomStrip);
-                
-                // Larger, more visible wheels
-                const wheelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
-                const wheelMaterial = new THREE.MeshLambertMaterial({ 
-                    color: this.teamColor,
-                    wireframe: true,
-                    transparent: true,
-                    opacity: 0.9,
-                    emissive: this.teamColor
-                });
-                
-                const frontWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-                frontWheel.position.set(0, 0.3, 1.0); // Raised above ground
-                frontWheel.rotation.z = Math.PI / 2;
-                cycleGroup.add(frontWheel);
-                
-                const backWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-                backWheel.position.set(0, 0.3, -1.0); // Raised above ground
-                backWheel.rotation.z = Math.PI / 2;
-                cycleGroup.add(backWheel);
-                
-                // Add bright marker for extra visibility
-                const markerGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-                const markerMaterial = new THREE.MeshLambertMaterial({
-                    color: this.teamColor,
-                    emissive: this.teamColor,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-                marker.position.y = 0.9; // Raised with body
-                cycleGroup.add(marker);
-                
-                this.mesh = cycleGroup;
-                this.mesh.position.copy(this.position);
-                this.mesh.visible = true;
-                scene.add(cycleGroup);
-                
-                console.log(`Light cycle created at position:`, this.position, `with color:`, this.teamColor.toString(16));
-            }
-            
-            setInitialVelocity() {
-                this.velocity.set(
-                    Math.cos(this.direction) * this.speed,
-                    0,
-                    Math.sin(this.direction) * this.speed
-                );
-            }
-            
-            reset() {
-                this.position.copy(this.startPosition);
-                this.direction = 0; // Reset to forward direction
-                this.isAlive = true;
-                this.setInitialVelocity();
-                this.nextTurnTime = Date.now() + (2000 + Math.random() * 4000);
-                
-                // Clear old trail segments
-                this.trailSegments.forEach(segment => {
-                    if (segment && segment.mesh) {
-                        scene.remove(segment.mesh);
-                    }
-                });
-                this.trailSegments = [];
-                
-                console.log(`🏍️ Light cycle ${this.cycleId} reset for new race`);
-            }
-            
-            update(deltaTime, elapsedTime) {
-                if (!this.isAlive) return;
-                
-                // Racing AI logic
-                if (raceState === 'racing') {
-                    this.updateRacingAI(deltaTime, elapsedTime);
-                }
-                
-                // Update position
-                const oldPosition = this.position.clone();
-                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
-                
-                // Keep light cycle above ground level
-                this.position.y = Math.max(this.position.y, 0.5);
-                
-                // Check for collisions with light walls
-                this.checkTrailCollisions();
-                
-                // Update mesh
-                if (this.mesh) {
-                    this.mesh.position.copy(this.position);
-                    this.mesh.rotation.y = this.direction;
-                    
-                    // Debug logging for movement
-                    const moved = oldPosition.distanceTo(this.position) > 0.01;
-                    if (moved && Math.random() < 0.01) {
-                        console.log(`🏍️ Cycle ${this.cycleId} racing: pos(${this.position.x.toFixed(1)}, ${this.position.z.toFixed(1)}) strategy=${this.racingStrategy}`);
-                    }
-                }
-                
-                // Create light trail
-                this.updateTrail(elapsedTime);
-            }
-            
-            updateRacingAI(deltaTime, elapsedTime) {
-                // Get opponent position
-                const opponent = lightCycles.find(cycle => cycle.cycleId !== this.cycleId);
-                if (!opponent || !opponent.isAlive) return;
-                
-                // Strategic racing behavior
-                if (Date.now() > this.nextTurnTime) {
-                    this.makeStrategicTurn(opponent);
-                    this.nextTurnTime = Date.now() + (1500 + Math.random() * 3000);
-                }
-            }
-            
-            makeStrategicTurn(opponent) {
-                // Strategic racing turns based on opponent position and strategy
-                const toOpponent = new THREE.Vector3().subVectors(opponent.position, this.position);
-                const distanceToOpponent = toOpponent.length();
-                
-                let newDirection;
-                
-                if (this.racingStrategy === 'aggressive' && distanceToOpponent < 8) {
-                    // Try to cut off opponent or force them into walls
-                    if (Math.random() < this.aggressiveness) {
-                        // Turn toward opponent to create blocking moves
-                        const angleToOpponent = Math.atan2(toOpponent.z, toOpponent.x);
-                        const turnOptions = [
-                            angleToOpponent,                    // Direct intercept
-                            angleToOpponent + Math.PI / 4,      // Cutting angle
-                            angleToOpponent - Math.PI / 4       // Alternate cutting angle
-                        ];
-                        newDirection = turnOptions[Math.floor(Math.random() * turnOptions.length)];
-                        console.log(`⚔️ Cycle ${this.cycleId} making aggressive move toward opponent!`);
-                    } else {
-                        newDirection = this.makeRandomTurn90();
-                    }
-                } else {
-                    // Defensive or standard racing - avoid opponent and create strategic walls
-                    if (Math.random() < 0.7) {
-                        newDirection = this.makeRandomTurn90();
-                    } else {
-                        // Sometimes make a defensive move away from opponent
-                        const awayFromOpponent = Math.atan2(-toOpponent.z, -toOpponent.x);
-                        newDirection = awayFromOpponent + (Math.random() - 0.5) * Math.PI / 2;
-                        console.log(`🛡️ Cycle ${this.cycleId} making defensive move away from opponent`);
-                    }
-                }
-                
-                this.direction = newDirection;
-                this.setInitialVelocity();
-            }
-            
-            makeRandomTurn90() {
-                // Classic 90-degree Tron turns
-                const turnOptions = [
-                    this.direction + Math.PI / 2,   // Right
-                    this.direction - Math.PI / 2,   // Left
-                    this.direction                  // Straight (rare)
-                ];
-                
-                const weights = [0.45, 0.45, 0.1]; // Prefer turning over straight
-                const random = Math.random();
-                
-                if (random < weights[0]) {
-                    return turnOptions[0];
-                } else if (random < weights[0] + weights[1]) {
-                    return turnOptions[1];
-                } else {
-                    return turnOptions[2];
-                }
-            }
-            
-            checkTrailCollisions() {
-                // Check collision with all trail segments (including own trail after initial segment)
-                for (const trail of lightTrails) {
-                    if (!trail || !trail.isAlive) continue;
-                    
-                    // Skip own recent trail segments to prevent immediate collision
-                    if (trail.cycleId === this.cycleId && trail.age < 1.0) continue;
-                    
-                    const distanceToTrail = this.position.distanceTo(trail.position);
-                    
-                    if (distanceToTrail < 0.8) { // Collision threshold
-                        this.explode();
-                        return;
-                    }
-                }
-                
-                // Check boundaries - explode if too far from racing area
-                const userX = 8, userZ = 8;
-                const distanceFromUser = Math.sqrt((this.position.x - userX) * (this.position.x - userX) + (this.position.z - userZ) * (this.position.z - userZ));
-                
-                if (distanceFromUser > 40) { // Race boundary
-                    this.explode();
-                }
-            }
-            
-            explode() {
-                if (!this.isAlive) return;
-                
-                this.isAlive = false;
-                console.log(`💥 Light cycle ${this.cycleId} exploded! Creating explosion effect...`);
-                
-                // Create explosion effect
-                this.createExplosion();
-                
-                // Determine winner
-                const opponent = lightCycles.find(cycle => cycle.cycleId !== this.cycleId);
-                if (opponent && opponent.isAlive && raceState === 'racing') {
-                    raceWinner = opponent.cycleId;
-                    raceState = 'victory';
-                    raceEndTime = Date.now();
-                    console.log(`🏆 Light cycle ${raceWinner} wins the race!`);
-                }
-            }
-            
-            createExplosion() {
-                // Create dramatic explosion effect at cycle position
-                try {
-                    const particleCount = 20;
-                    for (let i = 0; i < particleCount; i++) {
-                        const particle = {
-                            position: this.position.clone(),
-                            velocity: new THREE.Vector3(
-                                (Math.random() - 0.5) * 15,
-                                Math.random() * 10 + 5,
-                                (Math.random() - 0.5) * 15
-                            ),
-                            life: 2.0,
-                            maxLife: 2.0,
-                            color: this.teamColor,
-                            size: 0.3 + Math.random() * 0.4
-                        };
-                        particles.push(particle);
-                    }
-                } catch (error) {
-                    console.warn('Light cycle explosion error:', error);
-                }
-            }
-            
-            updateTrail(elapsedTime) {
-                // Add new trail segment if enough distance has been covered
-                if (this.trailSegments.length === 0 || 
-                    this.position.distanceTo(this.trailSegments[this.trailSegments.length - 1].position) > TRAIL_SEGMENT_LENGTH) {
-                    
-                    const trailSegment = new LightTrail(this.position.clone(), this.teamColor, elapsedTime, this.cycleId);
-                    this.trailSegments.push(trailSegment);
-                    lightTrails.push(trailSegment);
-                }
-                
-                // Clean up old trail segments
-                this.trailSegments = this.trailSegments.filter(segment => segment.isAlive);
-            }
-            
-            destroy() {
-                if (this.mesh) {
-                    scene.remove(this.mesh);
-                    this.mesh = null;
-                }
-                this.isAlive = false;
-                console.log('💥 Light cycle destroyed!');
-            }
-        }
         
-        class LightTrail {
-            constructor(position, color, creationTime, cycleId) {
-                this.position = position.clone();
-                this.color = color;
-                this.creationTime = creationTime;
-                this.cycleId = cycleId; // Which cycle created this trail
-                this.age = 0;
-                this.isAlive = true;
-                this.mesh = null;
-                
-                this.createMesh();
-            }
-            
-            createMesh() {
-                const trailGeometry = new THREE.BoxGeometry(0.8, 1.5, 0.8);
-                const trailMaterial = new THREE.MeshBasicMaterial({ 
-                    color: this.color,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                
-                this.mesh = new THREE.Mesh(trailGeometry, trailMaterial);
-                this.mesh.position.copy(this.position);
-                scene.add(this.mesh);
-            }
-            
-            update(elapsedTime) {
-                // Update age and fade out over time
-                this.age = elapsedTime - this.creationTime;
-                const fadeProgress = this.age / TRAIL_LIFETIME;
-                
-                if (fadeProgress >= 1.0) {
-                    this.destroy();
-                    return;
-                }
-                
-                // Update opacity
-                if (this.mesh) {
-                    this.mesh.material.opacity = 0.8 * (1 - fadeProgress);
-                }
-            }
-            
-            destroy() {
-                if (this.mesh) {
-                    scene.remove(this.mesh);
-                    this.mesh = null;
-                }
-                this.isAlive = false;
-            }
-        }
         
         // --- Predator Class ---
         class Predator {
@@ -1501,15 +924,16 @@
             checkBounds() {
                 if (this.isGrabbed) return;
                 
-                const halfBound = boundSize / 2;
+                const halfRadius = ATMOSPHERE_RADIUS / 2;
                 const turnFactor = 0.7;
                 
-                if (this.position.x > halfBound) this.velocity.x -= turnFactor;
-                if (this.position.x < -halfBound) this.velocity.x += turnFactor;
-                if (this.position.y > boundSize) this.velocity.y -= turnFactor;
-                if (this.position.y < 0.1) this.velocity.y += turnFactor;
-                if (this.position.z > halfBound) this.velocity.z -= turnFactor;
-                if (this.position.z < -halfBound) this.velocity.z += turnFactor;
+                // Constrain to atmosphere layer (0-30m height)
+                if (this.position.x > halfRadius) this.velocity.x -= turnFactor;
+                if (this.position.x < -halfRadius) this.velocity.x += turnFactor;
+                if (this.position.y > ATMOSPHERE_MAX_HEIGHT) this.velocity.y -= turnFactor;
+                if (this.position.y < ATMOSPHERE_MIN_HEIGHT + 0.5) this.velocity.y += turnFactor;
+                if (this.position.z > halfRadius) this.velocity.z -= turnFactor;
+                if (this.position.z < -halfRadius) this.velocity.z += turnFactor;
             }
         }
         
@@ -1782,92 +1206,20 @@
         }
 
         function createVectorGridGround() {
-            // Create a large Tron-style wireframe grid ground plane
-            const gridSize = 100; // Size of the overall grid
-            const divisions = 50; // Number of grid divisions
+            // Create a simple, clean grid to avoid aliasing artifacts
+            const gridSize = 80; // Smaller for better performance
+            const divisions = 40; // Fewer divisions to reduce aliasing
             const gridHelper = new THREE.GridHelper(gridSize, divisions);
             
-            // Style the grid with retro neon cyan color
-            gridHelper.material.color.setHex(0x00ffff);
-            gridHelper.material.opacity = 0.3;
+            // Simple cyan color without transparency to avoid artifacts
+            gridHelper.material.color.setHex(0x004444);
+            gridHelper.material.opacity = 0.5;
             gridHelper.material.transparent = true;
-            gridHelper.position.y = -0.1; // Slightly below ground level
+            gridHelper.position.y = 0; // Exactly at ground level
             
             scene.add(gridHelper);
             
-            // Add additional crossing lines for enhanced vector graphics look
-            const linesMaterial = new THREE.LineBasicMaterial({ 
-                color: 0x00aaff, 
-                opacity: 0.4, 
-                transparent: true 
-            });
-            
-            // Create major grid lines every 10 units
-            const majorLines = new THREE.Group();
-            const step = gridSize / 10;
-            
-            for (let i = -5; i <= 5; i++) {
-                if (i === 0) continue; // Skip center lines (already handled by GridHelper)
-                
-                // Horizontal major lines
-                const hGeometry = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(-gridSize/2, 0, i * step),
-                    new THREE.Vector3(gridSize/2, 0, i * step)
-                ]);
-                const hLine = new THREE.Line(hGeometry, new THREE.LineBasicMaterial({ 
-                    color: 0x00ffaa, 
-                    opacity: 0.6, 
-                    transparent: true 
-                }));
-                majorLines.add(hLine);
-                
-                // Vertical major lines  
-                const vGeometry = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(i * step, 0, -gridSize/2),
-                    new THREE.Vector3(i * step, 0, gridSize/2)
-                ]);
-                const vLine = new THREE.Line(vGeometry, new THREE.LineBasicMaterial({ 
-                    color: 0x00ffaa, 
-                    opacity: 0.6, 
-                    transparent: true 
-                }));
-                majorLines.add(vLine);
-            }
-            
-            majorLines.position.y = -0.05; // Slightly above the basic grid
-            scene.add(majorLines);
-            
-            // Add animated pulse lines for extra retro effect
-            const pulseGroup = new THREE.Group();
-            
-            // Center cross-hair lines that pulse
-            const centerHGeometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(-gridSize/2, 0, 0),
-                new THREE.Vector3(gridSize/2, 0, 0)
-            ]);
-            const centerHLine = new THREE.Line(centerHGeometry, new THREE.LineBasicMaterial({ 
-                color: 0x00ffff, 
-                opacity: 0.8, 
-                transparent: true 
-            }));
-            
-            const centerVGeometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, -gridSize/2),
-                new THREE.Vector3(0, 0, gridSize/2)
-            ]);
-            const centerVLine = new THREE.Line(centerVGeometry, new THREE.LineBasicMaterial({ 
-                color: 0x00ffff, 
-                opacity: 0.8, 
-                transparent: true 
-            }));
-            
-            pulseGroup.add(centerHLine);
-            pulseGroup.add(centerVLine);
-            pulseGroup.position.y = 0.05; // Above other grid lines
-            pulseGroup.name = 'gridPulseLines'; // For animation reference
-            scene.add(pulseGroup);
-            
-            console.log('🌐 Created vector graphics grid ground');
+            console.log('🌐 Created simplified grid ground');
         }
 
         function createTronTrees() {
@@ -2081,6 +1433,72 @@
             
             // Store fountain position for voxel spawning
             window.fountainPosition = new THREE.Vector3(-2, 2.8, 2);
+            
+            // Create fountain voxel system
+            const voxelSize = 0.08;
+            const voxelGeometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+            const voxelMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x00ffff, 
+                transparent: true,
+                opacity: 0.9,
+                emissive: 0x002244
+            });
+            
+            // Create instanced mesh for fountain voxels
+            fountainVoxelsMesh = new THREE.InstancedMesh(voxelGeometry, voxelMaterial, fountainVoxelCount);
+            fountainVoxelsMesh.name = "fountain_voxels";
+            fountainVoxelsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            scene.add(fountainVoxelsMesh);
+            
+            // Initialize fountain voxels array
+            for (let i = 0; i < fountainVoxelCount; i++) {
+                fountainVoxels.push(null);
+            }
+            
+            // Initialize fountain spawn timing
+            window.lastFountainSpawn = 0;
+            
+            console.log(`💧 Created fountain voxel system with ${fountainVoxelCount} voxels`);
+        }
+        
+        function createBoidsSystem() {
+            // Create geometry and material for boids
+            const boidSize = 0.15; // Larger for better VR visibility
+            const boidGeometry = new THREE.BoxGeometry(boidSize, boidSize, boidSize);
+            const boidMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x00ffaa, 
+                transparent: true,
+                opacity: 0.9,
+                emissive: 0x002244
+            });
+            
+            // Create instanced mesh for boids
+            const boidsMesh = new THREE.InstancedMesh(boidGeometry, boidMaterial, initialBoidCount);
+            boidsMesh.name = 'alive_voxels';
+            boidsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            scene.add(boidsMesh);
+            
+            // Initialize all boids with default matrices
+            const dummy = new THREE.Object3D();
+            for (let i = 0; i < initialBoidCount; i++) {
+                dummy.position.set(0, -1000, 0); // Start hidden
+                dummy.updateMatrix();
+                boidsMesh.setMatrixAt(i, dummy.matrix);
+            }
+            boidsMesh.instanceMatrix.needsUpdate = true;
+            
+            // Create held voxel meshes for both hands
+            heldVoxelMesh1 = new THREE.Mesh(boidGeometry, boidMaterial.clone());
+            heldVoxelMesh1.visible = false;
+            heldVoxelMesh1.position.set(0, -1000, 0);
+            scene.add(heldVoxelMesh1);
+            
+            heldVoxelMesh2 = new THREE.Mesh(boidGeometry, boidMaterial.clone());
+            heldVoxelMesh2.visible = false;
+            heldVoxelMesh2.position.set(0, -1000, 0);
+            scene.add(heldVoxelMesh2);
+            
+            console.log(`🐦 Created boids system with ${initialBoidCount} boids`);
         }
         
         function addGliderPattern(startX, startY) {
@@ -2448,28 +1866,6 @@
             }
         }
 
-        function createTankBattlefield() {
-            // Clear existing tanks
-            tanks = [];
-            
-            // Create initial tanks
-            for (let i = 0; i < TANK_COUNT; i++) {
-                const team = i % 2; // Alternate between team 0 and 1
-                const angle = (i / TANK_COUNT) * Math.PI * 2;
-                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * 8;
-                
-                const position = new THREE.Vector3(
-                    Math.cos(angle) * distance,
-                    0,
-                    Math.sin(angle) * distance
-                );
-                
-                const tank = new BattleTank(position, team);
-                tanks.push(tank);
-            }
-            
-            console.log(`🚗 Created ${TANK_COUNT} tanks for Battle Zone`);
-        }
 
         function createSpaceBattle() {
             // Clear existing space objects
@@ -2491,95 +1887,8 @@
             console.log(`🚀 Created ${ASTEROID_COUNT} asteroids and ${SPACESHIP_COUNT} spaceships for Space Battle`);
         }
 
-        function createLightCycleRacing() {
-            // Clear existing light cycles and trails
-            lightCycles = [];
-            lightTrails = [];
-            
-            // Create initial light cycles
-            for (let i = 0; i < LIGHT_CYCLE_COUNT; i++) {
-                const startX = TRACK_CENTER_X + (i === 0 ? -TRACK_WIDTH / 4 : TRACK_WIDTH / 4);
-                const startZ = TRACK_CENTER_Z - TRACK_HEIGHT / 2;
-                const team = i; // Each cycle gets its own team
-                
-                const lightCycle = new LightCycle(
-                    new THREE.Vector3(startX, 0, startZ),
-                    team
-                );
-                lightCycles.push(lightCycle);
-            }
-            
-            console.log(`🏍️ Created ${LIGHT_CYCLE_COUNT} light cycles for Tron Racing`);
-        }
 
-        function createProjectileExplosion(position) {
-            try {
-                if (!position) return;
-                
-                const particleCount = 8; // Reduced for Quest performance
-                for (let i = 0; i < particleCount; i++) {
-                    const particle = {
-                        position: position.clone(),
-                        velocity: new THREE.Vector3(
-                            (Math.random() - 0.5) * 4,
-                            Math.random() * 3,
-                            (Math.random() - 0.5) * 4
-                        ),
-                        life: 1.0,
-                        color: new THREE.Color().setHSL(Math.random() * 0.1 + 0.05, 1, 0.7)
-                    };
-                    particles.push(particle);
-                }
-                
-                console.log('💥 Projectile explosion!');
-            } catch (error) {
-                console.warn('Projectile explosion error:', error);
-            }
-        }
         
-        function updateTankBattle(deltaTime, elapsedTime) {
-            try {
-                // Update tanks
-                for (let i = tanks.length - 1; i >= 0; i--) {
-                    const tank = tanks[i];
-                    if (tank.health <= 0) {
-                        // Respawn tank after delay
-                        setTimeout(() => {
-                            if (tanks.length < TANK_COUNT) {
-                                const team = Math.floor(Math.random() * 2);
-                                const angle = Math.random() * Math.PI * 2;
-                                const distance = BATTLEFIELD_MIN_DISTANCE + Math.random() * (BATTLEFIELD_MAX_DISTANCE - BATTLEFIELD_MIN_DISTANCE);
-                                
-                                // Respawn tanks relative to VR user position (8, 1.8, 8)
-                                const position = new THREE.Vector3(
-                                    8 + Math.cos(angle) * distance,
-                                    0.5, // Slightly above ground for visibility
-                                    8 + Math.sin(angle) * distance
-                                );
-                                
-                                const newTank = new BattleTank(position, team);
-                                tanks.push(newTank);
-                                console.log('🚗 New tank deployed!');
-                            }
-                        }, 5000 + Math.random() * 5000); // 5-10 second respawn delay
-                        
-                        tanks.splice(i, 1);
-                    } else {
-                        tank.update(deltaTime, elapsedTime);
-                    }
-                }
-                
-                // Update projectiles
-                for (let i = projectiles.length - 1; i >= 0; i--) {
-                    const projectile = projectiles[i];
-                    if (projectile.update(deltaTime)) {
-                        projectiles.splice(i, 1);
-                    }
-                }
-            } catch (error) {
-                console.warn('Tank battle update error:', error);
-            }
-        }
         
         function createSpaceExplosion(position) {
             try {
@@ -2587,17 +1896,19 @@
                 
                 const particleCount = 6; // Reduced for Quest performance
                 for (let i = 0; i < particleCount; i++) {
-                    const particle = {
-                        position: position.clone(),
-                        velocity: new THREE.Vector3(
+                    const particle = getParticleFromPool();
+                    if (particle) {
+                        particle.position.copy(position);
+                        particle.velocity.set(
                             (Math.random() - 0.5) * 3,
                             (Math.random() - 0.5) * 3,
                             (Math.random() - 0.5) * 3
-                        ),
-                        life: 0.8,
-                        color: new THREE.Color().setHSL(Math.random() * 0.2 + 0.1, 1, 0.8)
-                    };
-                    particles.push(particle);
+                        );
+                        particle.life = 0.8;
+                        particle.maxLife = 0.8;
+                        particle.color = new THREE.Color().setHSL(Math.random() * 0.2 + 0.1, 1, 0.8);
+                        particles.push(particle);
+                    }
                 }
                 
                 console.log('✨ Space explosion!');
@@ -2608,13 +1919,20 @@
         
         function updateSkyBattle(deltaTime, elapsedTime) {
             try {
-                // Update stars
-                for (const star of stars) {
-                    star.update(elapsedTime);
+                // Performance optimization: update different elements at different intervals
+                const shouldUpdateStars = frameCount % SPACE_UPDATE_INTERVAL === 0;
+                const shouldUpdateOrbital = frameCount % ORBITAL_UPDATE_INTERVAL === 0;
+                const shouldUpdateParticles = frameCount % PARTICLE_UPDATE_INTERVAL === 0;
+                
+                // Update stars at reduced frequency (space layer)
+                if (shouldUpdateStars) {
+                    for (const star of stars) {
+                        star.update(elapsedTime);
+                    }
                 }
                 
-                // Spawn shooting stars randomly
-                if (Math.random() < SHOOTING_STAR_SPAWN_RATE * deltaTime) {
+                // Spawn shooting stars randomly but check less frequently
+                if (shouldUpdateParticles && Math.random() < SHOOTING_STAR_SPAWN_RATE * deltaTime * PARTICLE_UPDATE_INTERVAL) {
                     shootingStars.push(new ShootingStar());
                     console.log('✨ Shooting star appeared!');
                 }
@@ -2628,28 +1946,32 @@
                     }
                 }
                 
-                // Update asteroids
-                for (let i = asteroids.length - 1; i >= 0; i--) {
-                    const asteroid = asteroids[i];
-                    asteroid.update(deltaTime);
+                // Update asteroids at reduced frequency (orbital layer)
+                if (shouldUpdateOrbital) {
+                    for (let i = asteroids.length - 1; i >= 0; i--) {
+                        const asteroid = asteroids[i];
+                        asteroid.update(deltaTime * ORBITAL_UPDATE_INTERVAL);
+                        
+                        // Remove destroyed asteroids
+                        if (asteroid.health <= 0) {
+                            asteroids.splice(i, 1);
+                        }
+                    }
                     
-                    // Remove destroyed asteroids
-                    if (asteroid.health <= 0) {
-                        asteroids.splice(i, 1);
+                    // Maintain minimum asteroid count
+                    while (asteroids.length < ASTEROID_COUNT / 2) {
+                        asteroids.push(new Asteroid());
                     }
                 }
                 
-                // Maintain minimum asteroid count
-                while (asteroids.length < ASTEROID_COUNT / 2) {
-                    asteroids.push(new Asteroid());
+                // Update space ships at reduced frequency
+                if (shouldUpdateOrbital) {
+                    for (const ship of spaceShips) {
+                        ship.update(deltaTime * ORBITAL_UPDATE_INTERVAL, elapsedTime);
+                    }
                 }
                 
-                // Update space ships
-                for (const ship of spaceShips) {
-                    ship.update(deltaTime, elapsedTime);
-                }
-                
-                // Update space bullets
+                // Update space bullets (keep at normal frequency for responsiveness)
                 for (let i = spaceBullets.length - 1; i >= 0; i--) {
                     const bullet = spaceBullets[i];
                     if (bullet.update(deltaTime)) {
@@ -2662,67 +1984,7 @@
             }
         }
         
-        function updateLightCycles(deltaTime, elapsedTime) {
-            try {
-                // Race state management
-                if (raceState === 'victory') {
-                    // Check if it's time to reset the race
-                    if (Date.now() - raceEndTime > RACE_RESET_TIME * 1000) {
-                        resetRace();
-                    } else {
-                        // During victory phase, show victory celebration
-                        if (Math.random() < 0.02) {
-                            console.log(`🏆 Light cycle ${raceWinner} is victorious! Race resets in ${Math.ceil((RACE_RESET_TIME * 1000 - (Date.now() - raceEndTime)) / 1000)} seconds...`);
-                        }
-                    }
-                }
-                
-                // Update all light cycles
-                for (const cycle of lightCycles) {
-                    cycle.update(deltaTime, elapsedTime);
-                }
-                
-                // Update light trails
-                for (let i = lightTrails.length - 1; i >= 0; i--) {
-                    const trail = lightTrails[i];
-                    trail.update(elapsedTime);
-                    
-                    // Remove dead trails
-                    if (!trail.isAlive) {
-                        lightTrails.splice(i, 1);
-                    }
-                }
-                
-            } catch (error) {
-                console.warn('Light cycle update error:', error);
-            }
-        }
         
-        function resetRace() {
-            console.log('🔄 Resetting light cycle race for another epic battle!');
-            
-            // Reset race state
-            raceState = 'racing';
-            raceWinner = null;
-            raceEndTime = 0;
-            
-            // Reset both cycles
-            lightCycles.forEach(cycle => {
-                cycle.reset();
-            });
-            
-            // Clear old trails for fresh start
-            lightTrails.forEach(trail => {
-                if (trail && trail.mesh) {
-                    scene.remove(trail.mesh);
-                }
-            });
-            lightTrails = [];
-            
-            console.log('✅ Race reset complete - let the battle begin!');
-        }
-        
-        // Light cycle collision detection is now handled within each cycle's update method
         
         function handleTeleportation(hand, elapsedTime) {
             try {
@@ -2865,17 +2127,19 @@
             // Create particle effect at teleport location
             const particleCount = 20;
             for (let i = 0; i < particleCount; i++) {
-                const particle = {
-                    position: position.clone().add(new THREE.Vector3(0, 0.1, 0)),
-                    velocity: new THREE.Vector3(
+                const particle = getParticleFromPool();
+                if (particle) {
+                    particle.position.copy(position).add(new THREE.Vector3(0, 0.1, 0));
+                    particle.velocity.set(
                         (Math.random() - 0.5) * 2,
                         Math.random() * 2,
                         (Math.random() - 0.5) * 2
-                    ),
-                    life: 1.5,
-                    color: new THREE.Color().setHSL(0.5, 1, 0.8) // Cyan teleport effect
-                };
-                particles.push(particle);
+                    );
+                    particle.life = 1.5;
+                    particle.maxLife = 1.5;
+                    particle.color = new THREE.Color().setHSL(0.5, 1, 0.8); // Cyan teleport effect
+                    particles.push(particle);
+                }
             }
         }
         
@@ -3085,19 +2349,21 @@
             // Create expanding ring of particles to show force blast
             const particleCount = 15; // Reduced for Quest performance
             for (let i = 0; i < particleCount; i++) {
-                const angle = (i / particleCount) * Math.PI * 2;
-                const radius = 0.5;
-                const particle = {
-                    position: center.clone(),
-                    velocity: new THREE.Vector3(
+                const particle = getParticleFromPool();
+                if (particle) {
+                    const angle = (i / particleCount) * Math.PI * 2;
+                    const radius = 0.5;
+                    particle.position.copy(center);
+                    particle.velocity.set(
                         Math.cos(angle) * radius,
                         (Math.random() - 0.5) * 0.5,
                         Math.sin(angle) * radius
-                    ).add(direction.clone().multiplyScalar(0.5)),
-                    life: 0.8,
-                    color: new THREE.Color(0x00aaff)
-                };
-                particles.push(particle);
+                    ).add(direction.clone().multiplyScalar(0.5));
+                    particle.life = 0.8;
+                    particle.maxLife = 0.8;
+                    particle.color = new THREE.Color(0x00aaff);
+                    particles.push(particle);
+                }
             }
         }
         
@@ -3107,17 +2373,19 @@
                 
                 const particleCount = 10; // Reduced for Quest performance
                 for (let i = 0; i < particleCount; i++) {
-                    const particle = {
-                        position: position.clone(),
-                        velocity: new THREE.Vector3(
+                    const particle = getParticleFromPool();
+                    if (particle) {
+                        particle.position.copy(position);
+                        particle.velocity.set(
                             (Math.random() - 0.5) * 2,
                             (Math.random() - 0.5) * 2,
                             (Math.random() - 0.5) * 2
-                        ),
-                        life: 1.0,
-                        color: new THREE.Color().setHSL(Math.random() * 0.1 + 0.05, 1, 0.5)
-                    };
-                    particles.push(particle);
+                        );
+                        particle.life = 1.0;
+                        particle.maxLife = 1.0;
+                        particle.color = new THREE.Color().setHSL(Math.random() * 0.1 + 0.05, 1, 0.5);
+                        particles.push(particle);
+                    }
                 }
             } catch (error) {
                 console.warn('Particle explosion error:', error);
@@ -3126,8 +2394,11 @@
         
         function updateFountainVoxels(elapsedTime, deltaTime) {
             try {
-                // Spawn new voxels more frequently
-                if (elapsedTime - window.lastFountainSpawn > (1.0 / fountainSpawnRate)) {
+                // Performance optimization: spawn voxels at reduced frequency
+                const shouldUpdateFountain = frameCount % FOUNTAIN_UPDATE_INTERVAL === 0;
+                
+                // Spawn new voxels more frequently but check less often
+                if (shouldUpdateFountain && elapsedTime - window.lastFountainSpawn > (1.0 / fountainSpawnRate)) {
                     spawnFountainVoxel();
                     window.lastFountainSpawn = elapsedTime;
                     
@@ -3137,7 +2408,7 @@
                     }
                 }
                 
-                // Update existing voxels
+                // Update existing voxels (always update physics for smooth motion)
                 fountainVoxels.forEach((voxel, index) => {
                     if (!voxel) return;
                     
@@ -3148,11 +2419,13 @@
                     // Age the voxel
                     voxel.age += deltaTime;
                     
-                    // Fade out over time
-                    const fadeStart = voxelLifetime * 0.7;
-                    if (voxel.age > fadeStart) {
-                        const fadeProgress = (voxel.age - fadeStart) / (voxelLifetime - fadeStart);
-                        voxel.opacity = Math.max(0, 1 - fadeProgress);
+                    // Fade out over time (only update appearance at intervals)
+                    if (shouldUpdateFountain) {
+                        const fadeStart = voxelLifetime * 0.7;
+                        if (voxel.age > fadeStart) {
+                            const fadeProgress = (voxel.age - fadeStart) / (voxelLifetime - fadeStart);
+                            voxel.opacity = Math.max(0, 1 - fadeProgress);
+                        }
                     }
                     
                     // Remove expired or fallen voxels
@@ -3221,10 +2494,10 @@
                     hand.userData.tipPositions.INDEX.copy(indexTip);
                     hand.userData.tipPositions.MIDDLE.copy(middleTip);
                     
-                    // Update finger indicator position for better hand visibility
-                    if (hand.userData.fingerIndicator) {
-                        hand.userData.fingerIndicator.position.copy(indexTip);
-                        hand.userData.fingerIndicator.position.sub(hand.position);
+                    // Update hand indicator position for better hand visibility
+                    if (hand.userData.handIndicator) {
+                        hand.userData.handIndicator.position.copy(indexTip);
+                        hand.userData.handIndicator.visible = true;
                     }
                     
                     // Update hand indicator with pulsing effect
@@ -3252,6 +2525,10 @@
                     hand.userData.isPinching = thumbIndexDist < 0.03 || thumbMiddleDist < 0.03;
                 } else {
                     hand.userData.isReady = false;
+                    // Hide hand indicator when hand tracking is not available
+                    if (hand.userData.handIndicator) {
+                        hand.userData.handIndicator.visible = false;
+                    }
                 }
             } catch (error) {
                 console.warn('Hand tracking error:', error);
@@ -3266,14 +2543,12 @@
             frameCount++;
             const deltaTime = clock.getDelta();
             
-            // Animate the grid pulse lines for retro effect
-            const gridPulseLines = scene.getObjectByName('gridPulseLines');
-            if (gridPulseLines) {
-                const pulseIntensity = (Math.sin(elapsedTime * 2) + 1) / 2;
-                gridPulseLines.children.forEach(line => {
-                    line.material.opacity = 0.5 + pulseIntensity * 0.4;
-                });
-            }
+            // Update frustum culling
+            updateFrustumCulling();
+            
+            // Monitor frame rate and adjust quality for 120fps
+            updateFrameRateMonitoring(deltaTime);
+            
             
             // Update punch cooldowns
             if (punchCooldown1 > 0) {
@@ -3333,20 +2608,31 @@
             });
             }
             
-            // Update particles
+            // Update particles with performance optimization using object pool
             try {
-                particles = particles.filter(particle => {
-                    if (!particle || !particle.position || !particle.velocity) return false;
-                    
-                    particle.life -= deltaTime * 2;
-                    if (particle.life <= 0) return false;
-                    
-                    particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
-                    particle.velocity.multiplyScalar(0.98); // Friction
-                    return true;
-                });
+                const shouldUpdateParticles = frameCount % PARTICLE_UPDATE_INTERVAL === 0;
+                
+                if (shouldUpdateParticles) {
+                    particles = particles.filter(particle => {
+                        if (!particle || !particle.position || !particle.velocity) {
+                            if (particle) returnParticleToPool(particle);
+                            return false;
+                        }
+                        
+                        particle.life -= deltaTime * 2 * PARTICLE_UPDATE_INTERVAL;
+                        if (particle.life <= 0) {
+                            returnParticleToPool(particle);
+                            return false;
+                        }
+                        
+                        particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime * PARTICLE_UPDATE_INTERVAL));
+                        particle.velocity.multiplyScalar(0.98); // Friction
+                        return true;
+                    });
+                }
             } catch (error) {
                 console.warn('Particle update error:', error);
+                particles.forEach(p => returnParticleToPool(p));
                 particles = []; // Clear particles on error
             }
 
@@ -3385,35 +2671,45 @@
             });
             
             
-            // Update fountain voxels
-            updateFountainVoxels(elapsedTime, deltaTime);
+            // Temporal spreading of expensive updates for 120fps
+            const currentFrame = frameCount % TEMPORAL_SPREAD_FRAMES;
             
-            // Update Game of Life
-            updateGameOfLife(elapsedTime);
+            // Update fountain voxels (frames 0, 4)
+            if (currentFrame === updateQueues.fountain) {
+                updateFountainVoxels(elapsedTime, deltaTime);
+                updateQueues.fountain = (updateQueues.fountain + 4) % TEMPORAL_SPREAD_FRAMES;
+            }
             
-            // Update Battle Zone tank battle
-            updateTankBattle(deltaTime, elapsedTime);
+            // Update Game of Life (frames 1, 5)
+            if (currentFrame === updateQueues.gameOfLife) {
+                updateGameOfLife(elapsedTime);
+                updateQueues.gameOfLife = (updateQueues.gameOfLife + 4) % TEMPORAL_SPREAD_FRAMES;
+            }
             
-            // Update sky battle and starfield
-            updateSkyBattle(deltaTime, elapsedTime);
+            // Update sky battle and starfield (frames 2, 6)
+            if (currentFrame === updateQueues.skyBattle) {
+                updateSkyBattle(deltaTime, elapsedTime);
+                updateQueues.skyBattle = (updateQueues.skyBattle + 4) % TEMPORAL_SPREAD_FRAMES;
+            }
             
-            // Update Tron light cycles
-            updateLightCycles(deltaTime, elapsedTime);
-            
-            let activeFountainCount = 0;
-            fountainVoxels.forEach((voxel, i) => {
-                if (voxel && voxel.active) {
-                    dummy.position.copy(voxel.position);
-                    dummy.updateMatrix();
-                    fountainVoxelsMesh.setMatrixAt(activeFountainCount++, dummy.matrix);
+            // Performance optimization: only update fountain mesh at intervals
+            const shouldUpdateFountainMesh = frameCount % FOUNTAIN_UPDATE_INTERVAL === 0;
+            if (shouldUpdateFountainMesh) {
+                let activeFountainCount = 0;
+                fountainVoxels.forEach((voxel, i) => {
+                    if (voxel && voxel.active) {
+                        dummy.position.copy(voxel.position);
+                        dummy.updateMatrix();
+                        fountainVoxelsMesh.setMatrixAt(activeFountainCount++, dummy.matrix);
+                    }
+                });
+                
+                // Update fountain mesh if it exists
+                if (fountainVoxelsMesh) {
+                    fountainVoxelsMesh.count = activeFountainCount;
+                    fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
+                    fountainVoxelsMesh.visible = true;
                 }
-            });
-            
-            // Update fountain mesh if it exists
-            if (fountainVoxelsMesh) {
-                fountainVoxelsMesh.count = activeFountainCount;
-                fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
-                fountainVoxelsMesh.visible = true;
             }
 
             const aliveVoxelsMesh = scene.getObjectByName('alive_voxels');
@@ -3423,13 +2719,52 @@
                 // Performance optimization: only update flocking every few frames for distant boids
                 const shouldUpdateFlocking = frameCount % OPTIMIZATION_INTERVAL === 0;
                 
+                // Spatial partitioning for 120fps collision detection
+                spatialGrid.clear();
+                boids.forEach(boid => spatialGrid.insert(boid));
+                
+                // LOD-based boid updates for 120fps
+                let processedBoids = 0;
+                const maxBoidsPerFrame = Math.ceil(boids.length * currentQualityLevel);
+                
                 boids.forEach((boid, i) => {
-                    if (!boid.isGrabbed) {
-                        if (shouldUpdateFlocking || boid.isBeingTossed) {
-                            boid.flock(boids, [hand1, hand2], obstacles, predators);
+                    // Skip some boids based on quality level for 120fps
+                    if (processedBoids >= maxBoidsPerFrame && !boid.isGrabbed) {
+                        return; // Skip this boid this frame
+                    }
+                    
+                    const distanceToCamera = camera.position.distanceTo(boid.position);
+                    const lodLevel = getLODLevel(distanceToCamera);
+                    const inFrustum = isObjectInFrustum(boid.position, 0.2);
+                    
+                    // Skip culled objects entirely
+                    if (lodLevel === 'CULLED' && !boid.isGrabbed) {
+                        return;
+                    }
+                    
+                    if (!boid.isGrabbed && (inFrustum || distanceToCamera < CULLING_DISTANCE)) {
+                        // Update frequency based on LOD level
+                        let updateThisFrame = false;
+                        switch(lodLevel) {
+                            case 'CLOSE':
+                                updateThisFrame = true; // Always update close objects
+                                break;
+                            case 'MEDIUM':
+                                updateThisFrame = shouldUpdateFlocking || boid.isBeingTossed;
+                                break;
+                            case 'FAR':
+                                updateThisFrame = (frameCount % (OPTIMIZATION_INTERVAL * 2) === 0) || boid.isBeingTossed;
+                                break;
+                        }
+                        
+                        if (updateThisFrame) {
+                            // Use spatial partitioning for nearby boids instead of all boids
+                            const nearbyBoids = spatialGrid.getNearby(boid.position, 3.0);
+                            boid.flock(nearbyBoids, [hand1, hand2], obstacles, predators);
                         }
                         boid.checkBounds();
                     }
+                    
                     boid.update();
                     dummy.position.copy(boid.position);
                     if (boid.velocity.length() > 0.01) {
@@ -3437,37 +2772,175 @@
                     }
                     dummy.updateMatrix();
                     aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
+                    processedBoids++;
                 });
                 aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
                 
-                // Update predators
+                // Update predators with performance optimization
                 const predatorMesh = scene.getObjectByName('predators');
                 if (predatorMesh && predators.length > 0) {
                     predatorMesh.count = predators.length;
+                    const shouldUpdatePredatorMesh = frameCount % OPTIMIZATION_INTERVAL === 0;
+                    
                     predators.forEach((predator, i) => {
                         try {
                             if (!predator.isGrabbed) {
-                                predator.hunt(boids);
-                                predator.checkBounds();
+                                if (shouldUpdatePredatorMesh) {
+                                    predator.hunt(boids);
+                                    predator.checkBounds();
+                                }
                             }
                             predator.update();
-                            dummy.position.copy(predator.position);
-                            if (predator.velocity && predator.velocity.length() > 0.01) {
-                                dummy.lookAt(predator.position.clone().add(predator.velocity));
+                            
+                            // Only update matrix if updating mesh
+                            if (shouldUpdatePredatorMesh) {
+                                dummy.position.copy(predator.position);
+                                if (predator.velocity && predator.velocity.length() > 0.01) {
+                                    dummy.lookAt(predator.position.clone().add(predator.velocity));
+                                }
+                                dummy.updateMatrix();
+                                predatorMesh.setMatrixAt(i, dummy.matrix);
                             }
-                            dummy.updateMatrix();
-                            predatorMesh.setMatrixAt(i, dummy.matrix);
                         } catch (error) {
                             console.warn('Predator update error:', error);
                         }
                     });
-                    predatorMesh.instanceMatrix.needsUpdate = true;
+                    
+                    if (shouldUpdatePredatorMesh) {
+                        predatorMesh.instanceMatrix.needsUpdate = true;
+                    }
                 }
             }
         }
 
         function render() { renderer.render(scene, camera); }
         function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+        
+        // Object pooling for particles
+        function initParticlePool() {
+            particlePool = [];
+            for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+                particlePool.push({
+                    position: new THREE.Vector3(),
+                    velocity: new THREE.Vector3(),
+                    life: 0,
+                    maxLife: 1,
+                    inUse: false
+                });
+            }
+        }
+        
+        function getParticleFromPool() {
+            for (let i = 0; i < particlePool.length; i++) {
+                if (!particlePool[i].inUse) {
+                    particlePool[i].inUse = true;
+                    return particlePool[i];
+                }
+            }
+            return null; // Pool exhausted
+        }
+        
+        function returnParticleToPool(particle) {
+            particle.inUse = false;
+            particle.life = 0;
+        }
+        
+        // Frustum culling function
+        function updateFrustumCulling() {
+            cameraMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            frustum.setFromProjectionMatrix(cameraMatrix);
+        }
+        
+        function isObjectInFrustum(position, radius = 1.0) {
+            const sphere = new THREE.Sphere(position, radius);
+            return frustum.intersectsSphere(sphere);
+        }
+        
+        // Initialize shared materials for performance optimization (120fps optimized)
+        function initSharedMaterials() {
+            // Use MeshBasicMaterial for maximum performance (no lighting calculations)
+            sharedMaterials.boidMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ffaa,
+                transparent: false, // Disable transparency for performance
+                fog: false // Disable fog for performance
+            });
+            
+            sharedMaterials.particleMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00aaff,
+                transparent: false, // Disable transparency for performance
+                fog: false
+            });
+            
+            sharedMaterials.starMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffaa,
+                transparent: false,
+                fog: false
+            });
+            
+            sharedMaterials.spaceMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: false,
+                fog: false
+            });
+            
+            sharedMaterials.fountainMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                transparent: false,
+                fog: false
+            });
+            
+            // Quality-based material switching
+            sharedMaterials.updateForQuality = function(qualityLevel) {
+                const useBasicMaterials = qualityLevel < 0.7;
+                
+                if (useBasicMaterials) {
+                    // Switch to basic materials for better performance
+                    Object.values(sharedMaterials).forEach(material => {
+                        if (material && material.type) {
+                            material.transparent = false;
+                            material.fog = false;
+                        }
+                    });
+                }
+            };
+        }
+        
+        // Frame rate monitoring and dynamic quality scaling for 120fps
+        function updateFrameRateMonitoring(deltaTime) {
+            if (deltaTime > 0) {
+                const currentFPS = 1 / deltaTime;
+                frameRateHistory.push(currentFPS);
+                
+                // Keep only last 60 frames for rolling average
+                if (frameRateHistory.length > 60) {
+                    frameRateHistory.shift();
+                }
+                
+                // Calculate average FPS every 60 frames
+                if (frameRateHistory.length >= 60) {
+                    const avgFPS = frameRateHistory.reduce((a, b) => a + b) / frameRateHistory.length;
+                    
+                    // Dynamic quality scaling
+                    if (avgFPS < MIN_FRAME_RATE) {
+                        currentQualityLevel = Math.max(0.3, currentQualityLevel - 0.1);
+                        console.log(`🔻 Quality reduced to ${(currentQualityLevel * 100).toFixed(0)}% (FPS: ${avgFPS.toFixed(1)})`);
+                    } else if (avgFPS > TARGET_FRAME_RATE * 0.95 && currentQualityLevel < 1.0) {
+                        currentQualityLevel = Math.min(1.0, currentQualityLevel + 0.05);
+                        console.log(`🔺 Quality increased to ${(currentQualityLevel * 100).toFixed(0)}% (FPS: ${avgFPS.toFixed(1)})`);
+                    }
+                    
+                    frameRateHistory = []; // Reset for next measurement
+                }
+            }
+        }
+        
+        // LOD system for objects based on distance
+        function getLODLevel(distance) {
+            if (distance < LOD_DISTANCES.CLOSE) return 'CLOSE';
+            if (distance < LOD_DISTANCES.MEDIUM) return 'MEDIUM';
+            if (distance < LOD_DISTANCES.FAR) return 'FAR';
+            return 'CULLED';
+        }
 
         function init() {
             // Initialize Three.js scene
@@ -3478,22 +2951,59 @@
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 1.6, 3);
             
-            // Initialize renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // Initialize renderer with Quest 3 120fps optimizations
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: false, // Disable for 120fps performance
+                alpha: false,
+                depth: true,
+                stencil: false,
+                powerPreference: "high-performance" // Request high-performance GPU
+            });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limit pixel ratio for performance
+            renderer.shadowMap.enabled = false; // Disable shadows for 120fps
+            renderer.outputEncoding = THREE.sRGBEncoding; // Ensure correct color space
+            renderer.toneMapping = THREE.ACESFilmicToneMapping; // Optimized tone mapping
+            renderer.toneMappingExposure = 1.0;
             document.body.appendChild(renderer.domElement);
             
             // Initialize clock
             clock = new THREE.Clock();
             
-            // Setup WebXR
+            // Initialize particle pool for better performance
+            initParticlePool();
+            
+            // Initialize shared materials for performance optimization
+            initSharedMaterials();
+            
+            // Setup WebXR with Quest 3 optimizations
             renderer.xr.enabled = true;
+            
+            // Enable foveated rendering for Quest 3 120fps
+            if (renderer.xr.isPresenting) {
+                const session = renderer.xr.getSession();
+                if (session && session.supportedFrameRates) {
+                    // Request 120fps if supported
+                    session.requestReferenceSpace('local').then(referenceSpace => {
+                        if (session.supportedFrameRates.includes(120)) {
+                            session.updateRenderState({
+                                baseLayer: new XRWebGLLayer(session, renderer.context, {
+                                    antialias: false, // Disable for performance
+                                    alpha: false,
+                                    depth: true,
+                                    stencil: false,
+                                    framebufferScaleFactor: 0.8 // Reduce resolution for 120fps
+                                })
+                            });
+                            console.log('🚀 Quest 3 120fps mode enabled with foveated rendering');
+                        }
+                    });
+                }
+            }
+            
             document.body.appendChild(VRButton.createButton(renderer));
             
-            // Add hand tracking
+            // Add hand tracking with simple visualization
             const handModelFactory = new XRHandModelFactory();
             hand1 = renderer.xr.getHand(0);
             hand1.add(handModelFactory.createHandModel(hand1));
@@ -3503,9 +3013,27 @@
             hand2.add(handModelFactory.createHandModel(hand2));
             scene.add(hand2);
             
+            // Add simple hand indicators for better visibility
+            const handIndicatorGeometry = new THREE.SphereGeometry(0.05, 4, 4); // Reduced for hand indicators
+            const handIndicatorMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.6,
+                emissive: 0x002244
+            });
+            
+            const handIndicator1 = new THREE.Mesh(handIndicatorGeometry, handIndicatorMaterial);
+            handIndicator1.visible = false;
+            scene.add(handIndicator1);
+            
+            const handIndicator2 = new THREE.Mesh(handIndicatorGeometry, handIndicatorMaterial);
+            handIndicator2.visible = false;
+            scene.add(handIndicator2);
+            
             // Initialize hand userData
-            [hand1, hand2].forEach(hand => {
+            [hand1, hand2].forEach((hand, index) => {
                 hand.userData = {
+                    handIndicator: index === 0 ? handIndicator1 : handIndicator2,
                     tipPositions: {
                         THUMB: new THREE.Vector3(),
                         INDEX: new THREE.Vector3(),
@@ -3539,9 +3067,9 @@
             for (let i = 0; i < initialBoidCount; i++) {
                 const boid = new Boid(
                     new THREE.Vector3(
-                        (Math.random() - 0.5) * boundSize,
-                        Math.random() * 5 + 1,
-                        (Math.random() - 0.5) * boundSize
+                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS,
+                        Math.random() * (ATMOSPHERE_MAX_HEIGHT - 2) + 2, // 2-28m height
+                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS
                     )
                 );
                 boids.push(boid);
@@ -3551,10 +3079,9 @@
             createVectorGridGround();
             createTronTrees();
             createFountain();
+            createBoidsSystem();
             createGameOfLifeMonolith();
-            createTankBattlefield();
             createSpaceBattle();
-            createLightCycleRacing();
             
             // Setup event listeners
             window.addEventListener('resize', onWindowResize);
