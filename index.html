@@ -123,8 +123,8 @@
         // Temporal update spreading for 120fps
         let updateQueues = {
             fountain: 0,
-            skyBattle: 0,
-            particles: 0
+            skyBattle: 1,
+            particles: 2
         };
         const TEMPORAL_SPREAD_FRAMES = 6; // Spread updates across 6 frames
         
@@ -1211,7 +1211,7 @@
             base.position.y = 0.25;
             fountain.add(base);
             
-            // Base wireframe
+            // Base wireframe (thicker for VR)
             const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
                 color: 0x00aaff, 
                 wireframe: true, 
@@ -1219,6 +1219,7 @@
                 opacity: 0.8 
             }));
             baseWireframe.position.copy(base.position);
+            baseWireframe.scale.set(1.01, 1.01, 1.01); // Slightly larger for visibility
             fountain.add(baseWireframe);
             
             // Central pillar
@@ -1232,7 +1233,7 @@
             pillar.position.y = 1.5;
             fountain.add(pillar);
             
-            // Pillar wireframe
+            // Pillar wireframe (thicker for VR)
             const pillarWireframe = new THREE.Mesh(pillarGeometry, new THREE.MeshBasicMaterial({ 
                 color: 0x00ddff, 
                 wireframe: true, 
@@ -1240,6 +1241,7 @@
                 opacity: 0.9 
             }));
             pillarWireframe.position.copy(pillar.position);
+            pillarWireframe.scale.set(1.01, 1.01, 1.01); // Slightly larger for visibility
             fountain.add(pillarWireframe);
             
             // Ornamental top crystal
@@ -1253,12 +1255,13 @@
             crystal.position.y = 2.8;
             fountain.add(crystal);
             
-            // Crystal wireframe
+            // Crystal wireframe (thicker for VR)
             const crystalWireframe = new THREE.Mesh(crystalGeometry, new THREE.MeshBasicMaterial({ 
                 color: 0xffffff, 
                 wireframe: true 
             }));
             crystalWireframe.position.copy(crystal.position);
+            crystalWireframe.scale.set(1.02, 1.02, 1.02); // Slightly larger for visibility
             fountain.add(crystalWireframe);
             
             // Glowing light
@@ -1366,6 +1369,7 @@
             // Clear existing space objects
             asteroids = [];
             spaceShips = [];
+            stars = [];
             
             // Create initial asteroids
             for (let i = 0; i < ASTEROID_COUNT; i++) {
@@ -1379,7 +1383,13 @@
                 spaceShips.push(spaceship);
             }
             
-            console.log(`🚀 Created ${ASTEROID_COUNT} asteroids and ${SPACESHIP_COUNT} spaceships for Space Battle`);
+            // Create starfield
+            for (let i = 0; i < STAR_COUNT; i++) {
+                const star = new Star();
+                stars.push(star);
+            }
+            
+            console.log(`🚀 Created ${ASTEROID_COUNT} asteroids, ${SPACESHIP_COUNT} spaceships, and ${STAR_COUNT} stars for Space Battle`);
         }
 
 
@@ -1647,6 +1657,25 @@
             if (teleportIndicator) teleportIndicator.visible = false;
         }
         
+        function performTeleport(targetPosition) {
+            try {
+                // Teleport the user to the target position
+                const offset = renderer.xr.getCamera().position.clone().sub(camera.position);
+                const newPosition = targetPosition.clone().add(offset);
+                newPosition.y += 1.6; // Add user height
+                
+                // Move the camera/user to the new position
+                camera.position.copy(newPosition);
+                
+                // Create teleport effect
+                createTeleportEffect(targetPosition);
+                
+                console.log('🚀 Teleported to:', targetPosition);
+            } catch (error) {
+                console.warn('Teleport execution error:', error);
+            }
+        }
+        
         function detectFist(hand) {
             try {
                 if (!hand.userData.isReady) return false;
@@ -1680,8 +1709,8 @@
                     });
                 }
                 
-                // If fingertips are close to wrist, it's a fist
-                return thumbToWrist < 0.12 && indexToWrist < 0.12 && middleToWrist < 0.12;
+                // If fingertips are close to wrist, it's a fist (relaxed thresholds)
+                return thumbToWrist < 0.15 && indexToWrist < 0.15 && middleToWrist < 0.15;
             } catch (error) {
                 console.warn('Fist detection error:', error);
                 return false;
@@ -2067,8 +2096,8 @@
                         hand.userData.punchVelocity = 0;
                     }
                     
-                    // Detect punch (fist moving fast) - reduced threshold
-                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.5) {
+                    // Detect punch (fist moving fast) - further reduced threshold
+                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.3) {
                         console.log('PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
                         punchBlast(hand);
                         if (index === 0) {
@@ -2158,18 +2187,18 @@
             // Temporal spreading of expensive updates for 120fps
             const currentFrame = frameCount % TEMPORAL_SPREAD_FRAMES;
             
-            // Update fountain voxels (frames 0, 4)
+            // Update fountain voxels (frames 0, 2, 4)
             if (currentFrame === updateQueues.fountain) {
                 updateFountainVoxels(elapsedTime, deltaTime);
-                updateQueues.fountain = (updateQueues.fountain + 4) % TEMPORAL_SPREAD_FRAMES;
+                updateQueues.fountain = (updateQueues.fountain + 2) % TEMPORAL_SPREAD_FRAMES;
             }
             
             // Game of Life updates removed for performance
             
-            // Update sky battle and starfield (frames 2, 6)
+            // Update sky battle and starfield (frames 1, 3, 5)
             if (currentFrame === updateQueues.skyBattle) {
                 updateSkyBattle(deltaTime, elapsedTime);
-                updateQueues.skyBattle = (updateQueues.skyBattle + 4) % TEMPORAL_SPREAD_FRAMES;
+                updateQueues.skyBattle = (updateQueues.skyBattle + 2) % TEMPORAL_SPREAD_FRAMES;
             }
             
             // Performance optimization: only update fountain mesh at intervals
@@ -2247,9 +2276,15 @@
                     
                     boid.update();
                     dummy.position.copy(boid.position);
-                    if (boid.velocity.length() > 0.01) {
-                        dummy.lookAt(boid.position.clone().add(boid.velocity));
+                    
+                    // Fix spinning issue: only rotate if velocity is significant and stable
+                    if (boid.velocity.length() > 0.05) {
+                        const smoothedVelocity = boid.velocity.clone().normalize();
+                        // Add slight damping to prevent rapid rotation changes
+                        const targetRotation = boid.position.clone().add(smoothedVelocity);
+                        dummy.lookAt(targetRotation);
                     }
+                    
                     dummy.updateMatrix();
                     aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
                     processedBoids++;
@@ -2519,12 +2554,17 @@
             
             // Add hand tracking with proper mesh models
             const handModelFactory = new XRHandModelFactory();
+            
+            // Left hand (index 0)
             hand1 = renderer.xr.getHand(0);
-            hand1.add(handModelFactory.createHandModel(hand1));
+            const handModel1 = handModelFactory.createHandModel(hand1, 'mesh');
+            hand1.add(handModel1);
             scene.add(hand1);
             
+            // Right hand (index 1)  
             hand2 = renderer.xr.getHand(1);
-            hand2.add(handModelFactory.createHandModel(hand2));
+            const handModel2 = handModelFactory.createHandModel(hand2, 'mesh');
+            hand2.add(handModel2);
             scene.add(hand2);
             
             // Remove sphere indicators - use proper hand mesh models only
