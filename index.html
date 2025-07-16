@@ -50,8 +50,8 @@
 </head>
 <body>
     <div id="info">
-        WebXR Boids: Revival, Tossing, Predators & Force Punch<br>
-        Pinch voxels to revive • Grab boids to toss • Shake voxels for predators • Make fist and punch to blast!<br>
+        WebXR Boids: Flocking, Tossing, Predators & Force Punch<br>
+        Grab boids to toss • Shake for predators • Make fist and punch to blast!<br>
         <small>Point with right hand for 3 seconds to teleport</small>
     </div>
 
@@ -78,19 +78,16 @@
         let hand1, hand2;
         
         let interactiveVoxels = [];
-        let fountainVoxels = [];
+        let groundVoxels = [];
         let heldVoxelMesh1, heldVoxelMesh2;
-        let fountainMesh;
-        let fountainVoxelsMesh;
+        let groundVoxelsMesh;
         // Game of Life monolith system removed for performance
         const REVIVAL_TIME = 3; 
         const SHAKE_THRESHOLD = 0.8; // Reduced shake intensity needed to create predator
 
         const initialBoidCount = 25; // Further reduced by 50% for better performance
-        const interactiveVoxelCount = 0; // Replaced with fountain system
-        const fountainVoxelCount = 30; // Increased for better fountain visibility in VR
-        const fountainSpawnRate = 4; // Much faster spawn rate for dramatic VR fountain effect
-        const voxelLifetime = 8; // Shorter lifetime for better performance
+        const interactiveVoxelCount = 0; // Disabled for performance
+        const groundVoxelCount = 15; // Scattered ground voxels for testing
         const boundSize = 20;
         
         // Punch blast variables
@@ -105,7 +102,7 @@
         const SPACE_UPDATE_INTERVAL = 120; // Update stars every 120 frames (1 second at 120fps)
         const ORBITAL_UPDATE_INTERVAL = 60; // Update asteroids every 60 frames (0.5 seconds)
         const PARTICLE_UPDATE_INTERVAL = 30; // Update particles every 30 frames
-        const FOUNTAIN_UPDATE_INTERVAL = 20; // Update fountain every 20 frames
+        // Fountain constants removed - system eliminated
         
         // Level-of-Detail (LOD) system for 120fps
         const LOD_DISTANCES = {
@@ -209,17 +206,18 @@
         // Layer 2: Orbital Space (30-60m above user) - Asteroids simulation
         const ORBITAL_MIN_HEIGHT = 30;
         const ORBITAL_MAX_HEIGHT = 60;
-        const ORBITAL_RADIUS = 35;
+        const ORBITAL_RADIUS = 120; // Much larger area for asteroids and ships
         const ASTEROID_COUNT = 6;
         const SPACESHIP_COUNT = 1;
-        const ASTEROID_SPEED = 5.0;
-        const SPACESHIP_SPEED = 8.0;
-        const SPACE_BULLET_SPEED = 8.0;
+        const ASTEROID_SPEED = 25.0; // Much higher speed for dramatic movement
+        const SPACESHIP_SPEED = 8.0; // Reduced by 50% for better control
+        const SPACE_BULLET_SPEED = 35.0; // Much faster than spaceship (8.0 max speed)
         
         // Layer 3: Space (60m+ above user) - Distant starfield
         const SPACE_MIN_HEIGHT = 60;
         const SPACE_MAX_HEIGHT = 100;
-        const SPACE_RADIUS = 60;
+        const SPACE_RADIUS = 200; // Much larger area for stars
+        const SKY_RADIUS = 150; // Define SKY_RADIUS for bullet bounds
         const STAR_COUNT = 150; // More stars for distant effect
         const SHOOTING_STAR_SPAWN_RATE = 0.05;
         const SHOOTING_STAR_SPEED = 15.0;
@@ -258,11 +256,12 @@
             }
             
             createMesh() {
-                const geometry = new THREE.SphereGeometry(0.1, 6, 6); // Reduced complexity for VR performance
+                const geometry = new THREE.SphereGeometry(0.2, 8, 8); // Larger and more detailed for better VR visibility
                 const material = new THREE.MeshBasicMaterial({ 
                     color: 0xffffff,
                     transparent: true,
-                    opacity: this.brightness
+                    opacity: this.brightness * 0.8 + 0.2, // Ensure minimum visibility
+                    emissive: 0x222222 // Slight glow for better visibility
                 });
                 this.mesh = new THREE.Mesh(geometry, material);
                 this.mesh.position.copy(this.position);
@@ -272,7 +271,8 @@
             update(elapsedTime) {
                 if (this.mesh) {
                     const twinkle = (Math.sin(elapsedTime * this.twinkleSpeed) + 1) / 2;
-                    this.mesh.material.opacity = this.brightness * (0.3 + 0.7 * twinkle);
+                    // Enhanced twinkling with better minimum visibility
+                    this.mesh.material.opacity = (this.brightness * 0.8 + 0.2) * (0.5 + 0.5 * twinkle);
                 }
             }
         }
@@ -286,14 +286,14 @@
                     (Math.random() - 0.5) * ORBITAL_RADIUS
                 );
                 this.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 2.0, // Much more varied movement
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 1.2, // More dramatic Y movement
-                    (Math.random() - 0.5) * ASTEROID_SPEED * 2.0
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 3.0, // Even more varied movement
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 2.0, // More dramatic Y movement
+                    (Math.random() - 0.5) * ASTEROID_SPEED * 3.0
                 );
                 this.rotation = new THREE.Vector3(
-                    Math.random() * 0.02,
-                    Math.random() * 0.02,
-                    Math.random() * 0.02
+                    Math.random() * 0.05, // Increased rotation for more visible movement
+                    Math.random() * 0.05,
+                    Math.random() * 0.05
                 );
                 this.size = size; // large, medium, small
                 this.health = size === 'large' ? 3 : size === 'medium' ? 2 : 1;
@@ -322,7 +322,15 @@
             
             update(deltaTime) {
                 const oldPosition = this.position.clone();
-                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
+                
+                // FORCE CONSTANT MOVEMENT - bypass all other logic for testing
+                this.position.x += 0.2; // Move 0.2 units per frame regardless of deltaTime
+                this.position.z += 0.1; // Move diagonally for visibility
+                
+                // Debug minimal logging
+                if (Math.random() < 0.05) {
+                    console.log(`🌌 FORCED movement: position(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)})`);
+                }
                 
                 if (this.mesh) {
                     this.mesh.position.copy(this.position);
@@ -344,6 +352,14 @@
                 }
                 if (this.position.z < -halfRadius) {
                     this.position.z = halfRadius;
+                }
+                
+                // Keep within height bounds
+                if (this.position.y > ORBITAL_MAX_HEIGHT) {
+                    this.position.y = ORBITAL_MIN_HEIGHT;
+                }
+                if (this.position.y < ORBITAL_MIN_HEIGHT) {
+                    this.position.y = ORBITAL_MAX_HEIGHT;
                 }
                 if (this.position.y < ORBITAL_MIN_HEIGHT) {
                     this.position.y = ORBITAL_MAX_HEIGHT;
@@ -440,30 +456,18 @@
                 ship.rotation.x = Math.PI / 2; // Point forward
                 shipGroup.add(ship);
                 
-                // Add bright markers for visibility
-                const markerGeometry = new THREE.SphereGeometry(0.6, 6, 6); // Reduced complexity for VR performance
-                const markerMaterial = new THREE.MeshLambertMaterial({
-                    color: 0xffff00,
-                    emissive: 0xffff00,
+                // Add engine glow effect
+                const engineGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+                const engineMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ffff,
+                    emissive: 0x00aaff,
                     transparent: true,
-                    opacity: 1.0
+                    opacity: 0.8
                 });
-                const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-                marker.position.y = 1.0;
-                shipGroup.add(marker);
-                
-                // Add pulsing effect marker
-                const pulseGeometry = new THREE.SphereGeometry(0.5, 6, 6);
-                const pulseMaterial = new THREE.MeshLambertMaterial({
-                    color: 0xff0080,
-                    emissive: 0xff0080,
-                    transparent: true,
-                    opacity: 0.5
-                });
-                const pulseMarker = new THREE.Mesh(pulseGeometry, pulseMaterial);
-                pulseMarker.position.y = 1.0;
-                shipGroup.add(pulseMarker);
-                this.pulseMarker = pulseMarker;
+                const engineGlow = new THREE.Mesh(engineGeometry, engineMaterial);
+                engineGlow.position.z = -1.0; // Behind the ship
+                shipGroup.add(engineGlow);
+                this.engineGlow = engineGlow;
                 
                 this.mesh = shipGroup;
                 this.mesh.position.copy(this.position);
@@ -482,29 +486,38 @@
                 
                 // Update physics
                 const oldPosition = this.position.clone();
-                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
-                this.rotation += this.angularVelocity * deltaTime;
                 
-                // Apply drag
+                // Use velocity-based movement from AI with forced deltaTime
+                const forcedDeltaTime = 1/60; // Assume 60fps to bypass deltaTime issues
+                this.position.add(this.velocity.clone().multiplyScalar(forcedDeltaTime));
+                this.rotation += this.angularVelocity * forcedDeltaTime;
+                
+                // Apply velocity damping to prevent runaway acceleration
                 this.velocity.multiplyScalar(0.98);
-                this.angularVelocity *= 0.95;
+                this.angularVelocity *= 0.9;
+                
+                // Debug minimal logging
+                if (Math.random() < 0.05) {
+                    console.log(`🚀 AI spaceship movement: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) target=${this.target ? 'YES' : 'NO'} thrust=${this.thrust ? 'YES' : 'NO'}`);
+                }
                 
                 // Update mesh
                 if (this.mesh) {
                     this.mesh.position.copy(this.position);
                     this.mesh.rotation.y = this.rotation;
                     
-                    // Add pulsing effect to marker
-                    if (this.pulseMarker) {
-                        const pulseScale = 1.0 + Math.sin(elapsedTime * 4.0) * 0.3;
-                        this.pulseMarker.scale.setScalar(pulseScale);
+                    // Update engine glow based on thrust
+                    if (this.engineGlow) {
+                        const thrustIntensity = this.thrust ? 1.0 : 0.3;
+                        this.engineGlow.material.opacity = 0.4 + thrustIntensity * 0.6;
+                        this.engineGlow.scale.set(thrustIntensity, thrustIntensity, thrustIntensity);
                     }
-                    
-                    // Enhanced debug logging for spaceship movement
-                    const moved = oldPosition.distanceTo(this.position) > 0.1;
-                    if (moved && Math.random() < 0.05) { // More frequent logging
-                        console.log(`🚀 Spaceship moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) target=${this.target ? 'YES' : 'NO'}`);
-                    }
+                }
+                
+                // Enhanced debug logging for spaceship movement
+                const moved = oldPosition.distanceTo(this.position) > 0.1;
+                if (moved && Math.random() < 0.05) { // More frequent logging
+                    console.log(`🚀 Spaceship moving: pos(${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) vel(${this.velocity.length().toFixed(2)}) target=${this.target ? 'YES' : 'NO'}`);
                 }
                 
                 // Wrap around orbital space boundaries (30-60m layer)
@@ -521,6 +534,14 @@
                 if (this.position.z < -halfRadius) {
                     this.position.z = halfRadius;
                 }
+                
+                // Keep within height bounds
+                if (this.position.y > ORBITAL_MAX_HEIGHT) {
+                    this.position.y = ORBITAL_MIN_HEIGHT;
+                }
+                if (this.position.y < ORBITAL_MIN_HEIGHT) {
+                    this.position.y = ORBITAL_MAX_HEIGHT;
+                }
                 if (this.position.y < ORBITAL_MIN_HEIGHT) {
                     this.position.y = ORBITAL_MAX_HEIGHT;
                 }
@@ -534,13 +555,9 @@
             
             findTarget() {
                 let closestAsteroid = null;
-                let closestDistance = 40; // Much longer detection range to match firing range
+                let closestDistance = 80; // Much longer detection range for aggressive hunting
                 
-                // Debug: Check if we have asteroids
-                if (Math.random() < 0.01) {
-                    console.log(`🔍 Spaceship checking ${asteroids.length} asteroids for targets...`);
-                }
-                
+                // Always actively hunt for asteroids
                 for (const asteroid of asteroids) {
                     if (!asteroid || asteroid.health <= 0) continue;
                     const distance = this.position.distanceTo(asteroid.position);
@@ -563,6 +580,12 @@
             }
             
             updateAI(deltaTime) {
+                // Reset thrust flag
+                this.thrust = false;
+                
+                // Use forced deltaTime for consistency
+                const forcedDeltaTime = 1/60; // Assume 60fps to bypass deltaTime issues
+                
                 if (this.target) {
                     const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
                     const targetAngle = Math.atan2(toTarget.x, toTarget.z);
@@ -579,26 +602,27 @@
                         Math.sin(this.rotation),
                         0,
                         Math.cos(this.rotation)
-                    ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 6.0); // Even higher thrust for dramatic movement
+                    ).multiplyScalar(SPACESHIP_SPEED * forcedDeltaTime * 15.0); // Even higher thrust for more dramatic movement
                     
                     this.velocity.add(thrustForce);
                     this.thrust = true;
                     
                     // Much more aggressive turning for faster target acquisition
-                    this.angularVelocity += Math.sign(angleDiff) * 0.4;
+                    this.angularVelocity += Math.sign(angleDiff) * 0.5;
                 } else {
                     // More active patrol when no target
-                    if (Math.random() < 0.02) {
-                        this.angularVelocity += (Math.random() - 0.5) * 0.8;
+                    if (Math.random() < 0.05) {
+                        this.angularVelocity += (Math.random() - 0.5) * 1.0;
                     }
-                    if (Math.random() < 0.01) {
+                    if (Math.random() < 0.3) { // Much more frequent thrust for active patrol
                         const thrustForce = new THREE.Vector3(
                             Math.sin(this.rotation),
                             0,
                             Math.cos(this.rotation)
-                        ).multiplyScalar(SPACESHIP_SPEED * deltaTime * 2.0); // Faster patrol movement
+                        ).multiplyScalar(SPACESHIP_SPEED * forcedDeltaTime * 12.0); // Much faster patrol movement
                         
                         this.velocity.add(thrustForce);
+                        this.thrust = true;
                     }
                 }
             }
@@ -611,33 +635,46 @@
                 const distance = toTarget.length();
                 
                 // Fire if target is within range and roughly aimed
-                if (distance < 25) { // Much longer firing range for more action
+                if (distance < 40) { // Longer firing range to match detection range
                     const targetAngle = Math.atan2(toTarget.x, toTarget.z);
                     let angleDiff = targetAngle - this.rotation;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                     
                     // Very lenient aiming requirement for more action
-                    if (Math.abs(angleDiff) < Math.PI / 3) { // 60 degree cone instead of 30
+                    if (Math.abs(angleDiff) < Math.PI / 2.5) { // Even wider 72 degree cone for better hits
                         this.fire();
                         this.lastFireTime = elapsedTime;
-                        console.log(`🚀 Spaceship firing at asteroid! Distance: ${distance.toFixed(1)} units`);
+                        console.log(`🚀 Spaceship firing at asteroid! Distance: ${distance.toFixed(1)} units, angle diff: ${(angleDiff * 180 / Math.PI).toFixed(1)} degrees`);
                     }
                 }
             }
             
             fire() {
                 const bulletStart = this.position.clone();
-                const direction = new THREE.Vector3(
-                    Math.sin(this.rotation),
-                    0,
-                    Math.cos(this.rotation)
-                );
                 
-                const bullet = new SpaceBullet(bulletStart, direction, this);
-                spaceBullets.push(bullet);
-                
-                console.log('🚀 Space ship fired!');
+                // Aim directly at target for better accuracy
+                if (this.target) {
+                    const toTarget = new THREE.Vector3().subVectors(this.target.position, this.position);
+                    const direction = toTarget.normalize();
+                    
+                    const bullet = new SpaceBullet(bulletStart, direction, this);
+                    spaceBullets.push(bullet);
+                    
+                    console.log(`🚀 Space ship fired directly at target! Target at (${this.target.position.x.toFixed(1)}, ${this.target.position.y.toFixed(1)}, ${this.target.position.z.toFixed(1)})`);
+                } else {
+                    // Fallback to ship orientation
+                    const direction = new THREE.Vector3(
+                        Math.sin(this.rotation),
+                        0,
+                        Math.cos(this.rotation)
+                    );
+                    
+                    const bullet = new SpaceBullet(bulletStart, direction, this);
+                    spaceBullets.push(bullet);
+                    
+                    console.log('🚀 Space ship fired without target!');
+                }
             }
         }
         
@@ -646,38 +683,102 @@
                 this.position = position.clone();
                 this.velocity = direction.clone().multiplyScalar(SPACE_BULLET_SPEED);
                 this.shooter = shooter;
-                this.life = 3.0; // Seconds
+                this.life = 4.0; // Seconds - balanced lifetime
                 this.mesh = null;
                 
                 this.createMesh();
             }
             
             createMesh() {
-                const geometry = new THREE.SphereGeometry(0.08, 4, 4); // Further reduced for performance
-                const material = new THREE.MeshBasicMaterial({ 
-                    color: 0xffff00,
+                // Create photon torpedo-style projectile
+                const torpedoGroup = new THREE.Group();
+                
+                // Main torpedo body - elongated cylinder
+                const bodyGeometry = new THREE.CylinderGeometry(0.05, 0.08, 0.4, 6);
+                const bodyMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xff8800,
                     transparent: true,
-                    opacity: 1.0
+                    opacity: 1.0,
+                    emissive: 0xff4400  // Much brighter emissive glow
                 });
-                this.mesh = new THREE.Mesh(geometry, material);
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.rotation.z = Math.PI / 2; // Point forward
+                torpedoGroup.add(body);
+                
+                // Intense glowing energy core
+                const coreGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+                const coreMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffdd00,
+                    transparent: true,
+                    opacity: 1.0,
+                    emissive: 0xff8800  // Intense bright glow
+                });
+                const core = new THREE.Mesh(coreGeometry, coreMaterial);
+                torpedoGroup.add(core);
+                
+                // Outer glow aura
+                const auraGeometry = new THREE.SphereGeometry(0.12, 8, 8);
+                const auraMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffaa00,
+                    transparent: true,
+                    opacity: 0.4,
+                    emissive: 0xff6600
+                });
+                const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+                torpedoGroup.add(aura);
+                
+                // Enhanced energy trail effect
+                const trailGeometry = new THREE.ConeGeometry(0.04, 0.3, 6);
+                const trailMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffff44,
+                    transparent: true,
+                    opacity: 0.8,
+                    emissive: 0xff6600  // Brighter trail glow
+                });
+                const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+                trail.position.x = -0.2; // Behind the torpedo
+                trail.rotation.z = -Math.PI / 2; // Point backward
+                torpedoGroup.add(trail);
+                
+                this.mesh = torpedoGroup;
                 this.mesh.position.copy(this.position);
                 scene.add(this.mesh);
             }
             
             update(deltaTime) {
-                this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
-                this.life -= deltaTime;
+                // FORCE CONSTANT MOVEMENT - bypass deltaTime issues
+                const speed = SPACE_BULLET_SPEED / 60; // Assume 60fps for consistent movement
+                this.position.add(this.velocity.clone().normalize().multiplyScalar(speed));
+                this.life -= 1/60; // Decrease life by 1/60 second per frame
+                
+                // Debug torpedo lifetime
+                if (Math.random() < 0.02) {
+                    console.log(`🟡 Torpedo life remaining: ${this.life.toFixed(2)} seconds`);
+                }
                 
                 if (this.mesh) {
                     this.mesh.position.copy(this.position);
+                    
+                    // Orient torpedo to face movement direction
+                    const direction = this.velocity.clone().normalize();
+                    this.mesh.lookAt(this.position.clone().add(direction));
+                    
+                    // Add subtle rotation for more dynamic look
+                    this.mesh.rotation.z += 0.1;
                 }
                 
-                // Check collision with asteroids
+                // Check collision with asteroids - Enhanced hit detection
                 for (const asteroid of asteroids) {
                     const distance = this.position.distanceTo(asteroid.position);
-                    const hitRadius = asteroid.size === 'large' ? 2.0 : asteroid.size === 'medium' ? 1.2 : 0.7;
+                    const hitRadius = asteroid.size === 'large' ? 2.5 : asteroid.size === 'medium' ? 1.5 : 0.9; // Increased hit radius
+                    
+                    // Debug collision detection every 30 frames for closest asteroid
+                    if (Math.random() < 0.01) {
+                        console.log(`🎯 Torpedo at (${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)}) checking ${asteroid.size} asteroid at (${asteroid.position.x.toFixed(1)}, ${asteroid.position.y.toFixed(1)}, ${asteroid.position.z.toFixed(1)}) - distance: ${distance.toFixed(2)}, hit radius: ${hitRadius}`);
+                    }
                     
                     if (distance < hitRadius) {
+                        console.log(`💥 TORPEDO HIT! ${asteroid.size} asteroid at distance ${distance.toFixed(2)}, radius ${hitRadius}`);
                         asteroid.takeDamage();
                         this.explode();
                         return true; // Mark for removal
@@ -686,6 +787,7 @@
                 
                 // Remove if life expired or out of bounds
                 if (this.life <= 0 || Math.abs(this.position.x) > SKY_RADIUS * 2) {
+                    console.log(`🗑️ Torpedo expired - life: ${this.life.toFixed(2)}, bounds check: ${Math.abs(this.position.x) > SKY_RADIUS * 2}`);
                     this.destroy();
                     return true; // Mark for removal
                 }
@@ -952,6 +1054,13 @@
                 this.tossStartTime = 0;
                 this.tossVelocity = new THREE.Vector3();
                 this.originalVelocity = new THREE.Vector3();
+                // Add smoothed rotation direction to prevent spinning
+                this.smoothedDirection = this.velocity.clone().normalize();
+                // Add punch effect tracking
+                this.punchAffected = false;
+                this.punchEffectEndTime = 0;
+                this.punchGlowColor = new THREE.Color(0xff6600);
+                this.trailPositions = [];
             }
             
             update() {
@@ -964,6 +1073,29 @@
                     this.velocity.add(this.acceleration);
                     this.velocity.clampLength(0, this.maxSpeed);
                     this.acceleration.multiplyScalar(0);
+                }
+                
+                // Smooth rotation direction to prevent spinning
+                if (this.velocity.length() > 0.01) {
+                    const currentDirection = this.velocity.clone().normalize();
+                    this.smoothedDirection.lerp(currentDirection, 0.1); // Smooth interpolation
+                    this.smoothedDirection.normalize();
+                }
+                
+                // Update punch effect trail
+                if (this.punchAffected) {
+                    // Add current position to trail
+                    this.trailPositions.push(this.position.clone());
+                    // Keep trail length reasonable
+                    if (this.trailPositions.length > 10) {
+                        this.trailPositions.shift();
+                    }
+                    
+                    // Check if effect should end
+                    if (clock.getElapsedTime() > this.punchEffectEndTime) {
+                        this.punchAffected = false;
+                        this.trailPositions = [];
+                    }
                 }
             }
             
@@ -1196,128 +1328,49 @@
 
         // Tron trees function removed for performance
         
-        function createFountain() {
-            const fountain = new THREE.Group();
-            fountain.position.set(-2, 0, 2); // Position near user spawn
-            
-            // Base pedestal
-            const baseGeometry = new THREE.CylinderGeometry(2, 2.5, 0.5, 12);
-            const baseMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x004466, 
-                transparent: true, 
-                opacity: 0.3 
-            });
-            const base = new THREE.Mesh(baseGeometry, baseMaterial);
-            base.position.y = 0.25;
-            fountain.add(base);
-            
-            // Base wireframe (thicker for VR)
-            const baseWireframe = new THREE.Mesh(baseGeometry, new THREE.MeshBasicMaterial({ 
-                color: 0x00aaff, 
-                wireframe: true, 
-                transparent: true, 
-                opacity: 0.8 
-            }));
-            baseWireframe.position.copy(base.position);
-            baseWireframe.scale.set(1.01, 1.01, 1.01); // Slightly larger for visibility
-            fountain.add(baseWireframe);
-            
-            // Central pillar
-            const pillarGeometry = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
-            const pillarMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x0066aa,
-                transparent: true, 
-                opacity: 0.4 
-            });
-            const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
-            pillar.position.y = 1.5;
-            fountain.add(pillar);
-            
-            // Pillar wireframe (thicker for VR)
-            const pillarWireframe = new THREE.Mesh(pillarGeometry, new THREE.MeshBasicMaterial({ 
-                color: 0x00ddff, 
-                wireframe: true, 
-                transparent: true, 
-                opacity: 0.9 
-            }));
-            pillarWireframe.position.copy(pillar.position);
-            pillarWireframe.scale.set(1.01, 1.01, 1.01); // Slightly larger for visibility
-            fountain.add(pillarWireframe);
-            
-            // Ornamental top crystal
-            const crystalGeometry = new THREE.OctahedronGeometry(0.4, 1);
-            const crystalMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffff, 
-                transparent: true, 
-                opacity: 0.6 
-            });
-            const crystal = new THREE.Mesh(crystalGeometry, crystalMaterial);
-            crystal.position.y = 2.8;
-            fountain.add(crystal);
-            
-            // Crystal wireframe (thicker for VR)
-            const crystalWireframe = new THREE.Mesh(crystalGeometry, new THREE.MeshBasicMaterial({ 
-                color: 0xffffff, 
-                wireframe: true 
-            }));
-            crystalWireframe.position.copy(crystal.position);
-            crystalWireframe.scale.set(1.02, 1.02, 1.02); // Slightly larger for visibility
-            fountain.add(crystalWireframe);
-            
-            // Glowing light
-            const fountainLight = new THREE.PointLight(0x00ccff, 8, 20);
-            fountainLight.position.y = 2.8;
-            fountain.add(fountainLight);
-            
-            // Add floating ring elements
-            for (let i = 0; i < 6; i++) {
-                const angle = (i / 6) * Math.PI * 2;
-                const ringGeometry = new THREE.TorusGeometry(0.15, 0.03, 6, 12);
-                const ringMaterial = new THREE.MeshBasicMaterial({ 
-                    color: 0x0088ff, 
-                    transparent: true, 
-                    opacity: 0.7 
-                });
-                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-                ring.position.set(
-                    Math.cos(angle) * 1.2,
-                    0.8 + Math.sin(i) * 0.2,
-                    Math.sin(angle) * 1.2
-                );
-                ring.rotation.x = Math.PI / 2 + Math.sin(i) * 0.3;
-                fountain.add(ring);
-            }
-            
-            scene.add(fountain);
-            
-            // Store fountain position for voxel spawning
-            window.fountainPosition = new THREE.Vector3(-2, 2.8, 2);
-            
-            // Create fountain voxel system
-            const voxelSize = 0.08;
+        // Fountain system removed - too problematic
+        
+        function createGroundVoxels() {
+            // Create geometry and material for ground voxels
+            const voxelSize = 0.12;
             const voxelGeometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
-            const voxelMaterial = new THREE.MeshLambertMaterial({ 
-                color: 0x00ffff, 
+            const voxelMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x6666ff, 
                 transparent: true,
-                opacity: 0.9,
-                emissive: 0x002244
+                opacity: 0.8,
+                emissive: 0x2222bb
             });
             
-            // Create instanced mesh for fountain voxels
-            fountainVoxelsMesh = new THREE.InstancedMesh(voxelGeometry, voxelMaterial, fountainVoxelCount);
-            fountainVoxelsMesh.name = "fountain_voxels";
-            fountainVoxelsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            scene.add(fountainVoxelsMesh);
+            // Create instanced mesh for ground voxels
+            groundVoxelsMesh = new THREE.InstancedMesh(voxelGeometry, voxelMaterial, groundVoxelCount);
+            groundVoxelsMesh.name = 'ground_voxels';
+            groundVoxelsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            scene.add(groundVoxelsMesh);
             
-            // Initialize fountain voxels array
-            for (let i = 0; i < fountainVoxelCount; i++) {
-                fountainVoxels.push(null);
+            // Create and position ground voxels
+            const dummy = new THREE.Object3D();
+            for (let i = 0; i < groundVoxelCount; i++) {
+                const voxel = {
+                    position: new THREE.Vector3(
+                        (Math.random() - 0.5) * boundSize * 0.8, // Within bounds
+                        0.1, // Slightly above ground
+                        (Math.random() - 0.5) * boundSize * 0.8
+                    ),
+                    active: true,
+                    glowPhase: Math.random() * Math.PI * 2, // Random glow phase
+                    originalY: 0.1
+                };
+                
+                groundVoxels.push(voxel);
+                
+                // Set initial matrix
+                dummy.position.copy(voxel.position);
+                dummy.updateMatrix();
+                groundVoxelsMesh.setMatrixAt(i, dummy.matrix);
             }
             
-            // Initialize fountain spawn timing
-            window.lastFountainSpawn = 0;
-            
-            console.log(`💧 Created fountain voxel system with ${fountainVoxelCount} voxels`);
+            groundVoxelsMesh.instanceMatrix.needsUpdate = true;
+            console.log(`✨ Created ${groundVoxelCount} ground voxels for testing`);
         }
         
         function createBoidsSystem() {
@@ -1390,6 +1443,7 @@
             }
             
             console.log(`🚀 Created ${ASTEROID_COUNT} asteroids, ${SPACESHIP_COUNT} spaceships, and ${STAR_COUNT} stars for Space Battle`);
+            console.log(`⭐ Stars positioned at heights ${SPACE_MIN_HEIGHT}m - ${SPACE_MAX_HEIGHT}m above user`);
         }
 
 
@@ -1451,29 +1505,27 @@
                     }
                 }
                 
-                // Update asteroids at reduced frequency (orbital layer)
-                if (shouldUpdateOrbital) {
-                    for (let i = asteroids.length - 1; i >= 0; i--) {
-                        const asteroid = asteroids[i];
-                        asteroid.update(deltaTime * ORBITAL_UPDATE_INTERVAL);
-                        
-                        // Remove destroyed asteroids
-                        if (asteroid.health <= 0) {
-                            asteroids.splice(i, 1);
-                        }
-                    }
+                // Update asteroids every frame for smooth movement
+                for (let i = asteroids.length - 1; i >= 0; i--) {
+                    const asteroid = asteroids[i];
+                    asteroid.update(deltaTime);
                     
-                    // Maintain minimum asteroid count
+                    // Remove destroyed asteroids
+                    if (asteroid.health <= 0) {
+                        asteroids.splice(i, 1);
+                    }
+                }
+                
+                // Maintain minimum asteroid count (only check occasionally)
+                if (shouldUpdateOrbital && asteroids.length < ASTEROID_COUNT / 2) {
                     while (asteroids.length < ASTEROID_COUNT / 2) {
                         asteroids.push(new Asteroid());
                     }
                 }
                 
-                // Update space ships at reduced frequency
-                if (shouldUpdateOrbital) {
-                    for (const ship of spaceShips) {
-                        ship.update(deltaTime * ORBITAL_UPDATE_INTERVAL, elapsedTime);
-                    }
+                // Update space ships every frame for smooth movement
+                for (const ship of spaceShips) {
+                    ship.update(deltaTime, elapsedTime);
                 }
                 
                 // Update space bullets (keep at normal frequency for responsiveness)
@@ -1707,30 +1759,37 @@
                 const blastCenter = hand.userData.tipPositions.MIDDLE.clone();
                 const blastDirection = hand.userData.velocity.clone().normalize();
                 
-                console.log('Punch blast at:', blastCenter, 'direction:', blastDirection);
+                console.log('💥 Punch blast at:', blastCenter.toArray().map(v => v.toFixed(2)));
                 
-                // Create force blast effect
-                createForceBlastEffect(blastCenter, blastDirection);
+                // Create punch blast visual effect
+                createPunchBlastEffect(blastCenter, blastDirection);
+                
+                // Play punch sound effect
+                playPunchSound();
                 
                 // Affect boids within blast radius
-                const boidsToRemove = [];
+                let affectedBoidsCount = 0;
                 boids.forEach((boid, index) => {
                     if (boid && boid.position) {
                         const distance = boid.position.distanceTo(blastCenter);
                         if (distance < PUNCH_FORCE_RADIUS) {
-                            // Create particle explosion
+                            // Push boids away instead of removing them
+                            const pushDirection = new THREE.Vector3().subVectors(boid.position, blastCenter).normalize();
+                            const pushForce = Math.max(0.1, (PUNCH_FORCE_RADIUS - distance) / PUNCH_FORCE_RADIUS);
+                            boid.velocity.add(pushDirection.multiplyScalar(pushForce * 2.0));
+                            
+                            // Apply punch effect with lingering glow and trail
+                            boid.punchAffected = true;
+                            boid.punchEffectEndTime = clock.getElapsedTime() + 30; // 30 second effect
+                            boid.punchGlowColor.setHSL(0.1, 1.0, 0.6); // Orange glow
+                            boid.trailPositions = [boid.position.clone()];
+                            
+                            // Create particle explosion at boid position
                             createParticleExplosion(boid.position.clone());
-                            boidsToRemove.push(index);
+                            affectedBoidsCount++;
                         }
                     }
                 });
-                
-                // Remove affected boids (in reverse order to maintain indices)
-                boidsToRemove.reverse().forEach(index => {
-                    boids.splice(index, 1);
-                });
-                
-                console.log('Punch blast destroyed', boidsToRemove.length, 'boids');
                 
                 // Also affect predators
                 predators.forEach(predator => {
@@ -1739,12 +1798,182 @@
                         if (distance < PUNCH_FORCE_RADIUS) {
                             // Push predators away
                             const pushDirection = new THREE.Vector3().subVectors(predator.position, blastCenter).normalize();
-                            predator.velocity.add(pushDirection.multiplyScalar(0.5));
+                            const pushForce = Math.max(0.1, (PUNCH_FORCE_RADIUS - distance) / PUNCH_FORCE_RADIUS);
+                            predator.velocity.add(pushDirection.multiplyScalar(pushForce * 1.5));
                         }
                     }
                 });
+                
+                console.log(`💥 Punch affected ${affectedBoidsCount} boids!`);
+                
             } catch (error) {
                 console.warn('Punch blast error:', error);
+            }
+        }
+        
+        function createPunchBlastEffect(center, direction) {
+            try {
+                // Create expanding bubble effect
+                const bubbleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const bubbleMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xff6600,
+                    transparent: true,
+                    opacity: 0.8,
+                    emissive: 0xff4400
+                });
+                const bubbleMesh = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+                bubbleMesh.position.copy(center);
+                scene.add(bubbleMesh);
+                
+                // Animate bubble expansion
+                const startTime = clock.getElapsedTime();
+                const animateBlast = () => {
+                    const elapsed = clock.getElapsedTime() - startTime;
+                    const progress = elapsed / 0.5; // 0.5 second animation
+                    
+                    if (progress < 1) {
+                        // Expand bubble and fade out
+                        const scale = 1 + progress * (PUNCH_FORCE_RADIUS * 8);
+                        bubbleMesh.scale.set(scale, scale, scale);
+                        bubbleMaterial.opacity = 0.8 * (1 - progress);
+                        
+                        requestAnimationFrame(animateBlast);
+                    } else {
+                        // Remove bubble
+                        scene.remove(bubbleMesh);
+                        bubbleGeometry.dispose();
+                        bubbleMaterial.dispose();
+                    }
+                };
+                animateBlast();
+                
+                // Create shockwave rings
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(() => {
+                        createShockwaveRing(center, i * 0.1);
+                    }, i * 100);
+                }
+                
+            } catch (error) {
+                console.warn('Punch blast effect error:', error);
+            }
+        }
+        
+        function createShockwaveRing(center, delay) {
+            const ringGeometry = new THREE.RingGeometry(0.1, 0.2, 16);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffaa00,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+            ringMesh.position.copy(center);
+            ringMesh.rotation.x = Math.random() * Math.PI;
+            ringMesh.rotation.y = Math.random() * Math.PI;
+            scene.add(ringMesh);
+            
+            // Animate ring expansion
+            const startTime = clock.getElapsedTime();
+            const animateRing = () => {
+                const elapsed = clock.getElapsedTime() - startTime;
+                const progress = elapsed / 0.8; // 0.8 second animation
+                
+                if (progress < 1) {
+                    const scale = 1 + progress * 15;
+                    ringMesh.scale.set(scale, scale, scale);
+                    ringMaterial.opacity = 0.6 * (1 - progress);
+                    
+                    requestAnimationFrame(animateRing);
+                } else {
+                    scene.remove(ringMesh);
+                    ringGeometry.dispose();
+                    ringMaterial.dispose();
+                }
+            };
+            animateRing();
+        }
+        
+        function playPunchSound() {
+            try {
+                // Create punch sound using Web Audio API
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Create punch sound with multiple frequency components
+                const duration = 0.3;
+                const sampleRate = audioContext.sampleRate;
+                const frameCount = sampleRate * duration;
+                
+                const arrayBuffer = audioContext.createBuffer(1, frameCount, sampleRate);
+                const channelData = arrayBuffer.getChannelData(0);
+                
+                // Generate punch sound (thump + high-frequency crack)
+                for (let i = 0; i < frameCount; i++) {
+                    const t = i / sampleRate;
+                    const envelope = Math.exp(-t * 8); // Quick decay
+                    
+                    // Low frequency thump (40-80 Hz)
+                    const lowFreq = Math.sin(2 * Math.PI * 60 * t) * 0.8;
+                    // High frequency crack (200-400 Hz)
+                    const highFreq = Math.sin(2 * Math.PI * 300 * t) * 0.3 * Math.exp(-t * 15);
+                    // Mid frequency punch (100-150 Hz)
+                    const midFreq = Math.sin(2 * Math.PI * 125 * t) * 0.5;
+                    
+                    channelData[i] = (lowFreq + highFreq + midFreq) * envelope * 0.3;
+                }
+                
+                // Play the sound
+                const source = audioContext.createBufferSource();
+                source.buffer = arrayBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+                
+            } catch (error) {
+                console.warn('Punch sound error:', error);
+            }
+        }
+        
+        function createPunchTrail(boid) {
+            try {
+                if (boid.trailPositions.length < 2) return;
+                
+                // Only create trail particles occasionally to avoid performance issues
+                if (Math.random() < 0.3) {
+                    const trailGeometry = new THREE.SphereGeometry(0.03, 4, 4);
+                    const trailMaterial = new THREE.MeshBasicMaterial({
+                        color: boid.punchGlowColor,
+                        transparent: true,
+                        opacity: 0.6,
+                        emissive: boid.punchGlowColor.clone().multiplyScalar(0.5)
+                    });
+                    
+                    const trailMesh = new THREE.Mesh(trailGeometry, trailMaterial);
+                    trailMesh.position.copy(boid.position);
+                    scene.add(trailMesh);
+                    
+                    // Animate trail particle fade
+                    const startTime = clock.getElapsedTime();
+                    const animateTrail = () => {
+                        const elapsed = clock.getElapsedTime() - startTime;
+                        const progress = elapsed / 1.0; // 1 second fade
+                        
+                        if (progress < 1) {
+                            trailMaterial.opacity = 0.6 * (1 - progress);
+                            const scale = 1 + progress * 2;
+                            trailMesh.scale.set(scale, scale, scale);
+                            
+                            requestAnimationFrame(animateTrail);
+                        } else {
+                            scene.remove(trailMesh);
+                            trailGeometry.dispose();
+                            trailMaterial.dispose();
+                        }
+                    };
+                    animateTrail();
+                }
+                
+            } catch (error) {
+                console.warn('Punch trail error:', error);
             }
         }
         
@@ -1754,18 +1983,18 @@
                 
                 // Start grabbing
                 if (hand.userData.isPinching && hand.userData.heldVoxelIndex === null && hand.userData.heldBoidIndex === null) {
-                    // Try to grab fountain voxels first
-                    for (let i = 0; i < fountainVoxels.length; i++) {
-                        const voxel = fountainVoxels[i];
+                    // Try to grab ground voxels first
+                    for (let i = 0; i < groundVoxels.length; i++) {
+                        const voxel = groundVoxels[i];
                         if (voxel && voxel.active && hand.userData.tipPositions.INDEX.distanceTo(voxel.position) < grabRadius) {
                             voxel.active = false;
                             hand.userData.heldVoxelIndex = i;
                             hand.userData.holdStartTime = clock.getElapsedTime();
                             
-                            heldVoxelMesh.material.color.set(0x550055);
-                            heldVoxelMesh.material.emissive.set(0x550055);
+                            heldVoxelMesh.material.color.set(0x6666ff);
+                            heldVoxelMesh.material.emissive.set(0x2222bb);
                             heldVoxelMesh.visible = true;
-                            console.log('Grabbed fountain voxel', i);
+                            console.log('Grabbed ground voxel', i);
                             return;
                         }
                     }
@@ -1815,8 +2044,17 @@
                             boids.push(new Boid(heldVoxelMesh.position.clone()));
                             console.log('Boid revived! Total boids:', boids.length);
                         } else {
-                            // Don't return fountain voxels - they should fade naturally
-                            console.log('Fountain voxel released');
+                            // Return ground voxel to original position if released too early
+                            if (hand.userData.heldVoxelIndex < groundVoxels.length) {
+                                const voxel = groundVoxels[hand.userData.heldVoxelIndex];
+                                if (voxel) {
+                                    voxel.active = true;
+                                    voxel.position.copy(heldVoxelMesh.position);
+                                    voxel.position.y = 0.1; // Reset to ground level
+                                    voxel.originalY = 0.1;
+                                }
+                            }
+                            console.log('Ground voxel released');
                         }
                         
                         hand.userData.heldVoxelIndex = null;
@@ -1899,92 +2137,7 @@
             }
         }
         
-        function updateFountainVoxels(elapsedTime, deltaTime) {
-            try {
-                // Performance optimization: spawn voxels at reduced frequency
-                const shouldUpdateFountain = frameCount % FOUNTAIN_UPDATE_INTERVAL === 0;
-                
-                // Spawn new voxels more frequently but check less often
-                if (shouldUpdateFountain && elapsedTime - window.lastFountainSpawn > (1.0 / fountainSpawnRate)) {
-                    spawnFountainVoxel();
-                    window.lastFountainSpawn = elapsedTime;
-                    
-                    // Occasional fountain activity log
-                    if (Math.random() < 0.1) {
-                        console.log(`⛲ Fountain spawning voxel - active count: ${fountainVoxels.filter(v => v?.active).length}`);
-                    }
-                }
-                
-                // Update existing voxels (always update physics for smooth motion)
-                fountainVoxels.forEach((voxel, index) => {
-                    if (!voxel) return;
-                    
-                    // Smooth physics for better VR fountain visibility
-                    voxel.velocity.y -= 15.0 * deltaTime; // Stronger gravity for dramatic arcs
-                    voxel.position.add(voxel.velocity.clone().multiplyScalar(deltaTime));
-                    
-                    // Age the voxel
-                    voxel.age += deltaTime;
-                    
-                    // Fade out over time (only update appearance at intervals)
-                    if (shouldUpdateFountain) {
-                        const fadeStart = voxelLifetime * 0.7;
-                        if (voxel.age > fadeStart) {
-                            const fadeProgress = (voxel.age - fadeStart) / (voxelLifetime - fadeStart);
-                            voxel.opacity = Math.max(0, 1 - fadeProgress);
-                        }
-                    }
-                    
-                    // Remove expired or fallen voxels
-                    if (voxel.age > voxelLifetime || voxel.position.y < -2) {
-                        fountainVoxels[index] = null;
-                    }
-                });
-                
-            } catch (error) {
-                console.warn('Fountain voxel update error:', error);
-            }
-        }
-        
-        function spawnFountainVoxel() {
-            try {
-                // Find empty slot
-                let emptyIndex = fountainVoxels.findIndex(voxel => voxel === null);
-                if (emptyIndex === -1) {
-                    // Remove oldest voxel to make space
-                    emptyIndex = 0;
-                    fountainVoxels[0] = null;
-                }
-                
-                // Create new voxel with dramatic fountain physics for VR visibility
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 4.0 + Math.random() * 4.0; // Much faster horizontal speed (4-8)
-                const upwardSpeed = 6.0 + Math.random() * 6.0; // Much faster upward speed (6-12)
-                
-                const newVoxel = {
-                    position: window.fountainPosition.clone(),
-                    velocity: new THREE.Vector3(
-                        Math.cos(angle) * speed,
-                        upwardSpeed,
-                        Math.sin(angle) * speed
-                    ),
-                    age: 0,
-                    opacity: 1.0,
-                    active: true,
-                    finalColor: new THREE.Color().setHSL(0.5 + Math.random() * 0.3, 0.8, 0.6)
-                };
-                
-                fountainVoxels[emptyIndex] = newVoxel;
-                
-                // Occasional debug output to confirm fountain activity
-                if (Math.random() < 0.05) {
-                    console.log(`Fountain active: ${fountainVoxels.filter(v => v?.active).length}/${fountainVoxelCount} voxels`);
-                }
-                
-            } catch (error) {
-                console.warn('Fountain voxel spawn error:', error);
-            }
-        }
+        // Fountain update and spawn functions removed - system eliminated
 
         function updateHandData(hand) {
             try {
@@ -2079,9 +2232,9 @@
                         hand.userData.punchVelocity = 0;
                     }
                     
-                    // Detect punch (fist moving fast) - further reduced threshold
-                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.3) {
-                        console.log('PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
+                    // Detect punch (fist moving fast) - very low threshold for testing
+                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.15) {
+                        console.log('💥 PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
                         punchBlast(hand);
                         if (index === 0) {
                             punchCooldown1 = PUNCH_COOLDOWN;
@@ -2092,7 +2245,7 @@
                     
                     // Debug punch detection
                     if (frameCount % 60 === 0 && hand.userData.isFist) {
-                        console.log('Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.5');
+                        console.log('✊ Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.15');
                     }
                 } catch (error) {
                     console.warn('Punch detection error:', error);
@@ -2170,11 +2323,7 @@
             // Temporal spreading of expensive updates for 120fps
             const currentFrame = frameCount % TEMPORAL_SPREAD_FRAMES;
             
-            // Update fountain voxels (frames 0, 2, 4)
-            if (currentFrame === updateQueues.fountain) {
-                updateFountainVoxels(elapsedTime, deltaTime);
-                updateQueues.fountain = (updateQueues.fountain + 2) % TEMPORAL_SPREAD_FRAMES;
-            }
+            // Fountain system removed - too problematic
             
             // Game of Life updates removed for performance
             
@@ -2184,23 +2333,47 @@
                 updateQueues.skyBattle = (updateQueues.skyBattle + 2) % TEMPORAL_SPREAD_FRAMES;
             }
             
-            // Performance optimization: only update fountain mesh at intervals
-            const shouldUpdateFountainMesh = frameCount % FOUNTAIN_UPDATE_INTERVAL === 0;
-            if (shouldUpdateFountainMesh) {
-                let activeFountainCount = 0;
-                fountainVoxels.forEach((voxel, i) => {
+            // Fountain mesh update removed - system eliminated
+            
+            // Update ground voxels with gentle glow effect
+            if (groundVoxelsMesh) {
+                const dummy = new THREE.Object3D();
+                let activeGroundVoxels = 0;
+                
+                groundVoxels.forEach((voxel, i) => {
                     if (voxel && voxel.active) {
+                        // Gentle floating animation
+                        voxel.glowPhase += deltaTime * 2;
+                        const glowOffset = Math.sin(voxel.glowPhase) * 0.02;
+                        voxel.position.y = voxel.originalY + glowOffset;
+                        
                         dummy.position.copy(voxel.position);
                         dummy.updateMatrix();
-                        fountainVoxelsMesh.setMatrixAt(activeFountainCount++, dummy.matrix);
+                        groundVoxelsMesh.setMatrixAt(activeGroundVoxels++, dummy.matrix);
                     }
                 });
                 
-                // Update fountain mesh if it exists
-                if (fountainVoxelsMesh) {
-                    fountainVoxelsMesh.count = activeFountainCount;
-                    fountainVoxelsMesh.instanceMatrix.needsUpdate = true;
-                    fountainVoxelsMesh.visible = true;
+                groundVoxelsMesh.count = activeGroundVoxels;
+                groundVoxelsMesh.instanceMatrix.needsUpdate = true;
+                groundVoxelsMesh.visible = activeGroundVoxels > 0;
+                
+                // Occasionally respawn ground voxels if low count
+                if (frameCount % 1800 === 0 && activeGroundVoxels < groundVoxelCount / 2) { // Every 15 seconds at 120fps
+                    for (let i = 0; i < groundVoxels.length; i++) {
+                        const voxel = groundVoxels[i];
+                        if (voxel && !voxel.active) {
+                            voxel.active = true;
+                            voxel.position.set(
+                                (Math.random() - 0.5) * boundSize * 0.8,
+                                0.1,
+                                (Math.random() - 0.5) * boundSize * 0.8
+                            );
+                            voxel.originalY = 0.1;
+                            voxel.glowPhase = Math.random() * Math.PI * 2;
+                            console.log('✨ Respawned ground voxel', i);
+                            break; // Only respawn one per cycle
+                        }
+                    }
                 }
             }
 
@@ -2260,16 +2433,23 @@
                     boid.update();
                     dummy.position.copy(boid.position);
                     
-                    // Fix spinning issue: only rotate if velocity is significant and stable
+                    // Fix spinning issue: use smoothed direction instead of raw velocity
                     if (boid.velocity.length() > 0.05) {
-                        const smoothedVelocity = boid.velocity.clone().normalize();
-                        // Add slight damping to prevent rapid rotation changes
-                        const targetRotation = boid.position.clone().add(smoothedVelocity);
+                        const targetRotation = boid.position.clone().add(boid.smoothedDirection);
                         dummy.lookAt(targetRotation);
                     }
                     
                     dummy.updateMatrix();
                     aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
+                    
+                    // Apply punch effect glow
+                    if (boid.punchAffected) {
+                        // Create glowing effect by temporarily changing material
+                        const glowIntensity = Math.sin(clock.getElapsedTime() * 8) * 0.3 + 0.7;
+                        // Note: Individual material changes are expensive, so we'll use a visual trail instead
+                        createPunchTrail(boid);
+                    }
+                    
                     processedBoids++;
                 });
                 aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
@@ -2381,11 +2561,7 @@
                 fog: false
             });
             
-            sharedMaterials.fountainMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00ffff,
-                transparent: false,
-                fog: false
-            });
+            // Fountain material removed - system eliminated
             
             // Quality-based material switching
             sharedMaterials.updateForQuality = function(qualityLevel) {
@@ -2541,16 +2717,22 @@
             // Left hand (index 0)
             hand1 = renderer.xr.getHand(0);
             const handModel1 = handModelFactory.createHandModel(hand1, 'mesh');
+            handModel1.name = 'leftHandMesh';
             hand1.add(handModel1);
             scene.add(hand1);
+            console.log('✋ Left hand model created:', handModel1.type || 'mesh');
             
             // Right hand (index 1)  
             hand2 = renderer.xr.getHand(1);
             const handModel2 = handModelFactory.createHandModel(hand2, 'mesh');
+            handModel2.name = 'rightHandMesh';
             hand2.add(handModel2);
             scene.add(hand2);
+            console.log('✋ Right hand model created:', handModel2.type || 'mesh');
             
-            // Remove sphere indicators - use proper hand mesh models only
+            // Ensure no sphere fallback - force mesh type only
+            handModel1.visible = true;
+            handModel2.visible = true;
             
             // Initialize hand userData
             [hand1, hand2].forEach((hand, index) => {
@@ -2599,7 +2781,8 @@
             // Create world content
             createVectorGridGround();
             // Tron trees removed for performance
-            createFountain();
+            // Fountain system removed - too problematic
+            createGroundVoxels();
             createBoidsSystem();
             // Game of Life monolith removed for performance
             createSpaceBattle();
