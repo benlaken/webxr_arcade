@@ -1657,24 +1657,7 @@
             if (teleportIndicator) teleportIndicator.visible = false;
         }
         
-        function performTeleport(targetPosition) {
-            try {
-                // Teleport the user to the target position
-                const offset = renderer.xr.getCamera().position.clone().sub(camera.position);
-                const newPosition = targetPosition.clone().add(offset);
-                newPosition.y += 1.6; // Add user height
-                
-                // Move the camera/user to the new position
-                camera.position.copy(newPosition);
-                
-                // Create teleport effect
-                createTeleportEffect(targetPosition);
-                
-                console.log('🚀 Teleported to:', targetPosition);
-            } catch (error) {
-                console.warn('Teleport execution error:', error);
-            }
-        }
+        // Duplicate performTeleport function removed - using the scene-based implementation above
         
         function detectFist(hand) {
             try {
