@@ -1,23 +1,16 @@
-# WebXR Retro Arcade
+# WebXR Boids Interactive
 
-An immersive WebXR experience that combines classic arcade games in a stunning virtual reality environment. Experience the nostalgia of 80s vector graphics with modern VR hand tracking technology.
+An immersive WebXR experience featuring intelligent boids flocking simulation optimized for **120fps performance** on Meta Quest 3. Experience responsive hand tracking in a clean, performance-focused virtual environment.
 
 ## 🎮 Features
 
 ### Core Experience
-- **Hand Tracking VR**: Fully controller-free experience designed for Meta Quest 3
-- **Boids Flocking Simulation**: 50 AI-driven entities with realistic flocking behavior (optimized for Quest performance)
+- **Hand Tracking VR**: Fully controller-free experience designed for Meta Quest 3 at 120fps
+- **Boids Flocking Simulation**: 25 AI-driven entities with realistic flocking behavior
 - **Interactive Mechanics**: Grab, toss, shake, and punch your way through the environment
 - **Gesture-Based Teleportation**: Point and hold for 3 seconds to teleport (perfect for small VR spaces)
 
-### Retro Arcade Games
-
-#### 🚗 Battle Zone Tank Warfare (Ground Level)
-- 12 wireframe tanks in epic combat
-- Two-team AI battles with realistic physics
-- Projectile combat with explosion effects
-- Continuous respawning for non-stop action
-- Safe 25+ meter distance from user
+### Interactive Elements
 
 #### 🚀 Asteroids Space Battle (Sky Level)
 - Classic space combat 30+ meters overhead
@@ -26,37 +19,16 @@ An immersive WebXR experience that combines classic arcade games in a stunning v
 - 200 twinkling stars creating a beautiful starfield
 - ✨ **Sporadic shooting stars** with particle trails
 
-#### 🏍️ Tron Light Cycles (Racing Circuit)
-- Two light cycles racing with authentic 90-degree turns
-- Persistent light trail walls that fade over time
-- Collision detection and avoidance AI
-- Cyan vs Orange team colors
-- Safe racing boundaries beyond user space
-
-### Interactive Elements
-
-#### Conway's Game of Life Monolith
-- Massive 16x80 interactive light panel array
-- Extends from ground to sky (12+ units tall)
-- Touch panels to activate cells
-- Auto-running with classic patterns (gliders, oscillators)
-- Automatic pattern injection when reaching stable states
-
 #### Ornamental Fountain System
-- Constantly active voxel fountain (6 voxels/second)
+- Constantly active voxel fountain (4 voxels/second)
 - Physics-based particle system with gravity
 - Grab fountain voxels to revive as new boids
-- 15-second lifetime with fade effects
-
-#### Geometric Forest
-- 5 Tron-inspired wireframe trees
-- Obstacle avoidance for boids
-- Cyan glowing aesthetic
+- 8-second lifetime with fade effects
 
 #### Gesture-Based Teleportation System
 - **Point to Target**: Extend right index finger toward desired location
 - **3-Second Hold Timer**: Visual progress indicator with shake tolerance
-- **15-Meter Range**: Suitable for exploring the entire arcade environment
+- **15-Meter Range**: Suitable for exploring the entire environment
 - **Visual Feedback**: Cyan targeting reticle and expanding progress ring
 - **Particle Effects**: Satisfying teleport visual with cyan particle burst
 - **Small Space Friendly**: Perfect for room-scale VR in limited physical areas
@@ -65,7 +37,6 @@ An immersive WebXR experience that combines classic arcade games in a stunning v
 - **Grab & Toss**: Pinch to grab boids and toss them with physics
 - **Shake to Create Predators**: Vigorous shaking transforms voxels into hunting predators
 - **Punch Blast**: Make a fist and punch to create force waves that affect boids
-- **Touch Interaction**: Touch Game of Life panels to toggle cell states
 - **Teleportation**: Point with right hand for 3 seconds to teleport (perfect for small VR spaces)
 
 ## 🛠️ Technical Details
@@ -76,11 +47,14 @@ An immersive WebXR experience that combines classic arcade games in a stunning v
 - **JavaScript ES6+**: Modern web standards
 - **Instanced Rendering**: Optimized performance for 100+ entities
 
-### Performance Optimizations
-- Frame-rate based updates for smooth VR experience
-- Instanced mesh rendering for boids and particles
-- Efficient particle systems with automatic cleanup
-- Optimized collision detection with spatial partitioning
+### Performance Optimizations (120fps Quest 3)
+- **Aggressive 120fps optimizations**: LOD system, temporal update spreading, spatial partitioning
+- **Dynamic quality scaling**: Real-time FPS monitoring with automatic quality adjustment
+- **Instanced mesh rendering**: Optimized for boids and particles with reduced update frequency
+- **Object pooling**: Eliminates garbage collection overhead for particles
+- **Frustum culling**: Skip updates for off-screen objects
+- **Simplified materials**: MeshBasicMaterial only for maximum shader performance
+- **Foveated rendering**: Quest 3 specific optimizations with reduced resolution scaling
 
 ### Browser Compatibility
 - **Primary**: Meta Quest 3 native browser
@@ -122,7 +96,7 @@ Visit: `https://benlaken.github.io/webxr_arcade/`
 ### Hand Gestures
 - **Pinch**: Grab boids or fountain voxels
 - **Fist**: Create punch force blasts
-- **Point**: Touch Game of Life panels OR hold for 3 seconds to teleport
+- **Point**: Hold for 3 seconds to teleport
 - **Shake**: Transform held voxels into predators
 
 ### Desktop Fallback
@@ -131,21 +105,22 @@ Visit: `https://benlaken.github.io/webxr_arcade/`
 
 ## 🎨 Visual Style
 
-The entire experience embraces 80s retro aesthetics:
+The experience embraces clean, performance-focused aesthetics:
 - **Wireframe Geometry**: Classic vector graphics style
-- **Neon Colors**: Cyan, orange, green, and red glowing elements
+- **Neon Colors**: Cyan, orange, and green glowing elements
 - **Particle Effects**: Explosion and trail systems
-- **Tron-Inspired**: Geometric shapes and light trails
+- **Minimalist Design**: Focused on core interactive elements
 - **Dark Environment**: Space-like atmosphere with selective lighting
 
 ## 🔧 Customization
 
 Key parameters can be adjusted in the code:
-- `TANK_COUNT`: Number of battle tanks
+- `initialBoidCount`: Number of boids (default: 25)
 - `ASTEROID_COUNT`: Space battle density
-- `CYCLE_SPEED`: Light cycle racing speed
 - `SHOOTING_STAR_SPAWN_RATE`: Meteor frequency
-- `GRID_SIZE_X/Y`: Game of Life dimensions
+- `fountainSpawnRate`: Fountain voxel generation rate
+- `TARGET_FRAME_RATE`: Performance target (default: 120fps)
+- `currentQualityLevel`: Dynamic quality scaling factor
 
 ## 📱 Deployment
 
@@ -169,8 +144,8 @@ MIT License - Feel free to use and modify for your own projects!
 
 ## 🙏 Acknowledgments
 
-- Inspired by classic arcade games: Battle Zone, Asteroids, and Tron
-- Conway's Game of Life cellular automaton
+- Inspired by classic arcade games: Asteroids and boids flocking algorithms
+- Craig Reynolds' original boids simulation research
 - Three.js community for excellent WebXR examples
 - Meta for WebXR hand tracking technology
 
@@ -178,4 +153,4 @@ MIT License - Feel free to use and modify for your own projects!
 
 **Built with ❤️ for the VR community**
 
-*Experience the future of retro gaming in virtual reality!*
+*Experience intelligent boids flocking at 120fps in virtual reality!*
