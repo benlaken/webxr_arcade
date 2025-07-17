@@ -1764,8 +1764,8 @@
                     });
                 }
                 
-                // If fingertips are close to wrist, it's a fist (relaxed thresholds)
-                return thumbToWrist < 0.15 && indexToWrist < 0.15 && middleToWrist < 0.15;
+                // If fingertips are close to wrist, it's a fist (very relaxed thresholds)
+                return thumbToWrist < 0.18 && indexToWrist < 0.18 && middleToWrist < 0.18;
             } catch (error) {
                 console.warn('Fist detection error:', error);
                 return false;
@@ -1774,9 +1774,9 @@
         
         function punchBlast(hand) {
             try {
-                if (!hand.userData.tipPositions.MIDDLE || !hand.userData.velocity) return;
+                if (!hand.userData.handCenter || !hand.userData.velocity) return;
                 
-                const blastCenter = hand.userData.tipPositions.MIDDLE.clone();
+                const blastCenter = hand.userData.handCenter.clone();
                 const blastDirection = hand.userData.velocity.clone().normalize();
                 
                 console.log('💥 Punch blast at:', blastCenter.toArray().map(v => v.toFixed(2)));
@@ -2167,17 +2167,24 @@
                     const indexTip = hand.joints['index-finger-tip'].position;
                     const middleTip = hand.joints['middle-finger-tip'].position;
                     
+                    // Calculate hand center position for better velocity tracking
+                    const handCenter = new THREE.Vector3()
+                        .addVectors(thumbTip, indexTip)
+                        .add(middleTip)
+                        .divideScalar(3);
+                    
                     // Store previous position for velocity calculation
-                    hand.userData.lastPosition.copy(hand.userData.tipPositions.INDEX);
+                    hand.userData.lastPosition.copy(hand.userData.handCenter || handCenter);
                     
                     hand.userData.tipPositions.THUMB.copy(thumbTip);
                     hand.userData.tipPositions.INDEX.copy(indexTip);
                     hand.userData.tipPositions.MIDDLE.copy(middleTip);
+                    hand.userData.handCenter = handCenter.clone();
                     
                     // Hand mesh models are automatically positioned by XRHandModelFactory
                     
-                    // Calculate hand velocity
-                    hand.userData.velocity.subVectors(hand.userData.tipPositions.INDEX, hand.userData.lastPosition);
+                    // Calculate hand velocity using hand center for more accurate punch detection
+                    hand.userData.velocity.subVectors(handCenter, hand.userData.lastPosition);
                     hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
                     
                     // Calculate shake intensity
@@ -2252,8 +2259,8 @@
                         hand.userData.punchVelocity = 0;
                     }
                     
-                    // Detect punch (fist moving fast) - very low threshold for testing
-                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.15) {
+                    // Detect punch (fist moving fast) - extremely low threshold for testing
+                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.08) {
                         console.log('💥 PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
                         punchBlast(hand);
                         if (index === 0) {
@@ -2265,7 +2272,7 @@
                     
                     // Debug punch detection
                     if (frameCount % 60 === 0 && hand.userData.isFist) {
-                        console.log('✊ Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.15');
+                        console.log('✊ Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.08');
                     }
                 } catch (error) {
                     console.warn('Punch detection error:', error);
@@ -2777,6 +2784,7 @@
                         MIDDLE: new THREE.Vector3()
                     },
                     lastPosition: new THREE.Vector3(),
+                    handCenter: new THREE.Vector3(),
                     velocity: new THREE.Vector3(),
                     shakeHistory: [0, 0, 0, 0, 0],
                     shakeIntensity: 0,
