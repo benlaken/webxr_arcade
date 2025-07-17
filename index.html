@@ -229,6 +229,7 @@
         let teleportHoldStartTime = 0;
         let teleportTargetPosition = null;
         let teleportReticle = null;
+        let teleportRayLine = null;
         let isPointingForTeleport = false;
         const TELEPORT_HOLD_TIME = 3.0; // Seconds to hold for teleport
         const TELEPORT_SHAKE_TOLERANCE = 0.2; // Allowance for hand shake
@@ -1566,6 +1567,20 @@
                         
                         // Check if within teleport range
                         if (distance <= TELEPORT_MAX_DISTANCE) {
+                            // Show ray line from hand to target
+                            if (teleportRayLine) {
+                                const rayGeometry = teleportRayLine.geometry;
+                                const positions = rayGeometry.attributes.position.array;
+                                positions[0] = rayOrigin.x;
+                                positions[1] = rayOrigin.y;
+                                positions[2] = rayOrigin.z;
+                                positions[3] = intersectPoint.x;
+                                positions[4] = intersectPoint.y;
+                                positions[5] = intersectPoint.z;
+                                rayGeometry.attributes.position.needsUpdate = true;
+                                teleportRayLine.visible = true;
+                            }
+                            
                             // Show reticle at target location
                             teleportReticle.position.copy(intersectPoint);
                             teleportReticle.visible = true;
@@ -1661,11 +1676,15 @@
                 const currentOffset = scene.position.clone();
                 const userPosition = new THREE.Vector3(8, 1.8, 8); // Current user offset
                 
+                // Adjust target position to maintain proper height above ground
+                const adjustedTargetPosition = targetPosition.clone();
+                adjustedTargetPosition.y = 1.8; // Keep user at proper VR height
+                
                 // Calculate new scene offset to place user at target
                 const newOffset = new THREE.Vector3(
-                    userPosition.x - targetPosition.x,
-                    userPosition.y - targetPosition.y,
-                    userPosition.z - targetPosition.z
+                    userPosition.x - adjustedTargetPosition.x,
+                    userPosition.y - adjustedTargetPosition.y,
+                    userPosition.z - adjustedTargetPosition.z
                 );
                 
                 scene.position.copy(newOffset);
@@ -1707,6 +1726,7 @@
             
             if (teleportReticle) teleportReticle.visible = false;
             if (teleportIndicator) teleportIndicator.visible = false;
+            if (teleportRayLine) teleportRayLine.visible = false;
         }
         
         // Duplicate performTeleport function removed - using the scene-based implementation above
@@ -2643,6 +2663,20 @@
             teleportIndicator.visible = false;
             teleportIndicator.rotation.x = -Math.PI / 2; // Flat on ground
             scene.add(teleportIndicator);
+            
+            // Create teleport ray line
+            const rayGeometry = new THREE.BufferGeometry();
+            const rayPositions = new Float32Array(6); // 2 points * 3 coordinates
+            rayGeometry.setAttribute('position', new THREE.BufferAttribute(rayPositions, 3));
+            const rayMaterial = new THREE.LineBasicMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.7,
+                linewidth: 3
+            });
+            teleportRayLine = new THREE.Line(rayGeometry, rayMaterial);
+            teleportRayLine.visible = false;
+            scene.add(teleportRayLine);
             
             console.log('🚀 Teleportation system initialized');
         }
