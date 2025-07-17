@@ -1672,27 +1672,42 @@
             try {
                 console.log('🚀 Teleporting to:', targetPosition);
                 
-                // Move the scene to effectively teleport the user
-                const currentOffset = scene.position.clone();
-                const userPosition = new THREE.Vector3(8, 1.8, 8); // Current user offset
+                // Proper VR teleportation using the camera's parent (the VR reference space)
+                const cameraParent = camera.parent;
                 
-                // Adjust target position to maintain proper height above ground
-                const adjustedTargetPosition = targetPosition.clone();
-                adjustedTargetPosition.y = 1.8; // Keep user at proper VR height
-                
-                // Calculate new scene offset to place user at target
-                const newOffset = new THREE.Vector3(
-                    userPosition.x - adjustedTargetPosition.x,
-                    userPosition.y - adjustedTargetPosition.y,
-                    userPosition.z - adjustedTargetPosition.z
-                );
-                
-                scene.position.copy(newOffset);
+                if (cameraParent) {
+                    // Get current user position in world space
+                    const currentUserPosition = new THREE.Vector3();
+                    camera.getWorldPosition(currentUserPosition);
+                    
+                    // Calculate offset needed to move user to target position
+                    const offset = new THREE.Vector3()
+                        .subVectors(targetPosition, currentUserPosition);
+                    
+                    // Keep user at proper VR height (don't teleport vertically)
+                    offset.y = 0;
+                    
+                    // Apply the offset to the camera's parent (VR reference space)
+                    cameraParent.position.add(offset);
+                    
+                    console.log('✅ VR Teleport completed! Offset:', offset.toArray().map(v => v.toFixed(2)));
+                } else {
+                    // Fallback for non-VR mode - move scene
+                    const currentOffset = scene.position.clone();
+                    const userPosition = new THREE.Vector3(0, 1.8, 3); // Default camera position
+                    
+                    const newOffset = new THREE.Vector3(
+                        userPosition.x - targetPosition.x,
+                        userPosition.y - targetPosition.y,
+                        userPosition.z - targetPosition.z
+                    );
+                    
+                    scene.position.copy(newOffset);
+                    console.log('✅ Fallback teleport completed!');
+                }
                 
                 // Create teleport effect
                 createTeleportEffect(targetPosition);
-                
-                console.log('✅ Teleport completed!');
                 
             } catch (error) {
                 console.warn('Teleport execution error:', error);
@@ -1755,12 +1770,13 @@
                 const middleToWrist = middleTip.distanceTo(wrist);
                 
                 // Debug logging
-                if (frameCount % 60 === 0) { // Log every 60 frames
-                    console.log('Fist detection:', {
+                if (frameCount % 30 === 0) { // More frequent logging
+                    console.log('👊 Fist detection:', {
                         thumbToWrist: thumbToWrist.toFixed(3),
                         indexToWrist: indexToWrist.toFixed(3),
                         middleToWrist: middleToWrist.toFixed(3),
-                        velocity: hand.userData.velocity ? hand.userData.velocity.length().toFixed(3) : '0'
+                        velocity: hand.userData.velocity ? hand.userData.velocity.length().toFixed(3) : '0',
+                        isFist: (thumbToWrist < 0.18 && indexToWrist < 0.18 && middleToWrist < 0.18)
                     });
                 }
                 
@@ -2187,6 +2203,15 @@
                     hand.userData.velocity.subVectors(handCenter, hand.userData.lastPosition);
                     hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
                     
+                    // Debug velocity calculation
+                    if (frameCount % 60 === 0) {
+                        console.log('🖐️ Hand velocity:', {
+                            velocity: hand.userData.velocity.length().toFixed(3),
+                            handCenter: handCenter.toArray().map(v => v.toFixed(2)),
+                            lastPosition: hand.userData.lastPosition.toArray().map(v => v.toFixed(2))
+                        });
+                    }
+                    
                     // Calculate shake intensity
                     const currentSpeed = hand.userData.velocity.length();
                     hand.userData.shakeHistory.push(currentSpeed);
@@ -2259,8 +2284,8 @@
                         hand.userData.punchVelocity = 0;
                     }
                     
-                    // Detect punch (fist moving fast) - extremely low threshold for testing
-                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.08) {
+                    // Detect punch (fist moving fast) - ultra low threshold for testing
+                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
                         console.log('💥 PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
                         punchBlast(hand);
                         if (index === 0) {
@@ -2270,9 +2295,16 @@
                         }
                     }
                     
-                    // Debug punch detection
-                    if (frameCount % 60 === 0 && hand.userData.isFist) {
-                        console.log('✊ Fist detected, velocity:', hand.userData.punchVelocity.toFixed(3), 'threshold: 0.08');
+                    // Debug punch detection - more aggressive logging
+                    if (frameCount % 30 === 0) {
+                        console.log('✊ Punch debug:', {
+                            isFist: hand.userData.isFist,
+                            punchVelocity: hand.userData.punchVelocity.toFixed(3),
+                            threshold: '0.05',
+                            willPunch: hand.userData.isFist && hand.userData.punchVelocity > 0.05,
+                            handIndex: index,
+                            cooldown: currentCooldown.toFixed(2)
+                        });
                     }
                 } catch (error) {
                     console.warn('Punch detection error:', error);
