@@ -239,8 +239,9 @@
         let debugOverlay = null;
         let debugText = null;
         let debugInfo = {
-            leftHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0 },
-            rightHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0 }
+            leftHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false },
+            rightHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false },
+            frameCount: 0
         };
 
         // --- NEW: Obstacles for boids to avoid ---
@@ -1806,12 +1807,17 @@
         
         function punchBlast(hand) {
             try {
-                if (!hand.userData.handCenter || !hand.userData.velocity) return;
+                if (!hand.userData.handCenter || !hand.userData.velocity) {
+                    console.warn('⚠️ Punch blast failed - missing handCenter or velocity');
+                    return;
+                }
                 
                 const blastCenter = hand.userData.handCenter.clone();
                 const blastDirection = hand.userData.velocity.clone().normalize();
                 
-                console.log('💥 Punch blast at:', blastCenter.toArray().map(v => v.toFixed(2)));
+                console.log('💥 PUNCH BLAST TRIGGERED!');
+                console.log('  Center:', blastCenter.toArray().map(v => v.toFixed(2)));
+                console.log('  Direction:', blastDirection.toArray().map(v => v.toFixed(2)));
                 
                 // Create punch blast visual effect
                 createPunchBlastEffect(blastCenter, blastDirection);
@@ -2038,7 +2044,7 @@
                     // Try to grab ground voxels first
                     for (let i = 0; i < groundVoxels.length; i++) {
                         const voxel = groundVoxels[i];
-                        if (voxel && voxel.active && hand.userData.tipPositions.INDEX.distanceTo(voxel.position) < grabRadius) {
+                        if (voxel && voxel.active && voxel.position && hand.userData.tipPositions.INDEX && hand.userData.tipPositions.INDEX.distanceTo(voxel.position) < grabRadius) {
                             voxel.active = false;
                             hand.userData.heldVoxelIndex = i;
                             hand.userData.holdStartTime = clock.getElapsedTime();
@@ -2054,7 +2060,7 @@
                     // Try to grab active boids
                     for (let i = 0; i < boids.length; i++) {
                         const boid = boids[i];
-                        if (!boid.isGrabbed && hand.userData.tipPositions.INDEX.distanceTo(boid.position) < grabRadius) {
+                        if (boid && boid.position && !boid.isGrabbed && hand.userData.tipPositions.INDEX && hand.userData.tipPositions.INDEX.distanceTo(boid.position) < grabRadius) {
                             boid.isGrabbed = true;
                             boid.originalVelocity.copy(boid.velocity);
                             hand.userData.heldBoidIndex = i;
@@ -2305,6 +2311,7 @@
                     handInfo.isFist = hand.userData.isFist;
                     handInfo.velocity = hand.userData.punchVelocity;
                     handInfo.cooldown = currentCooldown;
+                    handInfo.isReady = hand.userData.isReady;
                     
                     // Detect punch (fist moving fast) - ultra low threshold for testing
                     if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
@@ -2337,6 +2344,7 @@
             // Update debug overlay in VR mode
             if (renderer.xr.isPresenting && debugOverlay) {
                 debugOverlay.visible = true;
+                debugInfo.frameCount = frameCount;
                 updateDebugOverlay();
             } else if (debugOverlay) {
                 debugOverlay.visible = false;
@@ -2770,14 +2778,18 @@
             // Draw debug information
             let y = 30;
             ctx.fillText('=== FORCE PUNCH DEBUG ===', 10, y);
+            y += 25;
+            ctx.fillText(`Frame: ${debugInfo.frameCount}`, 10, y);
             y += 35;
             
             ctx.fillText(`LEFT HAND:`, 10, y);
             y += 25;
+            ctx.fillText(`  Ready: ${debugInfo.leftHand.isReady ? 'YES' : 'NO'}`, 10, y);
+            y += 20;
             ctx.fillText(`  Fist: ${debugInfo.leftHand.isFist ? 'YES' : 'NO'}`, 10, y);
-            y += 25;
+            y += 20;
             ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
-            y += 25;
+            y += 20;
             ctx.fillText(`  Cooldown: ${debugInfo.leftHand.cooldown.toFixed(2)}s`, 10, y);
             y += 20;
             ctx.fillText(`  Thumb: ${debugInfo.leftHand.thumbDist.toFixed(3)} (<0.18)`, 10, y);
@@ -2789,10 +2801,12 @@
             
             ctx.fillText(`RIGHT HAND:`, 10, y);
             y += 25;
+            ctx.fillText(`  Ready: ${debugInfo.rightHand.isReady ? 'YES' : 'NO'}`, 10, y);
+            y += 20;
             ctx.fillText(`  Fist: ${debugInfo.rightHand.isFist ? 'YES' : 'NO'}`, 10, y);
-            y += 25;
+            y += 20;
             ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
-            y += 25;
+            y += 20;
             ctx.fillText(`  Cooldown: ${debugInfo.rightHand.cooldown.toFixed(2)}s`, 10, y);
             y += 20;
             ctx.fillText(`  Thumb: ${debugInfo.rightHand.thumbDist.toFixed(3)} (<0.18)`, 10, y);
