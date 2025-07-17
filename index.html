@@ -235,6 +235,14 @@
         const TELEPORT_SHAKE_TOLERANCE = 0.2; // Allowance for hand shake
         const TELEPORT_MAX_DISTANCE = 15; // Maximum teleport range
 
+        // VR Debug overlay system
+        let debugOverlay = null;
+        let debugText = null;
+        let debugInfo = {
+            leftHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0 },
+            rightHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0 }
+        };
+
         // --- NEW: Obstacles for boids to avoid ---
         // Tron trees and obstacles removed for performance
         
@@ -1769,6 +1777,14 @@
                 const indexToWrist = indexTip.distanceTo(wrist);
                 const middleToWrist = middleTip.distanceTo(wrist);
                 
+                // Store finger distances for debug overlay
+                if (hand.userData.debugHandIndex !== undefined) {
+                    const handInfo = hand.userData.debugHandIndex === 0 ? debugInfo.leftHand : debugInfo.rightHand;
+                    handInfo.thumbDist = thumbToWrist;
+                    handInfo.indexDist = indexToWrist;
+                    handInfo.middleDist = middleToWrist;
+                }
+                
                 // Debug logging
                 if (frameCount % 30 === 0) { // More frequent logging
                     console.log('👊 Fist detection:', {
@@ -2284,6 +2300,12 @@
                         hand.userData.punchVelocity = 0;
                     }
                     
+                    // Update debug info for VR overlay
+                    const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
+                    handInfo.isFist = hand.userData.isFist;
+                    handInfo.velocity = hand.userData.punchVelocity;
+                    handInfo.cooldown = currentCooldown;
+                    
                     // Detect punch (fist moving fast) - ultra low threshold for testing
                     if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
                         console.log('💥 PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
@@ -2310,6 +2332,14 @@
                     console.warn('Punch detection error:', error);
                 }
             });
+            }
+            
+            // Update debug overlay in VR mode
+            if (renderer.xr.isPresenting && debugOverlay) {
+                debugOverlay.visible = true;
+                updateDebugOverlay();
+            } else if (debugOverlay) {
+                debugOverlay.visible = false;
             }
             
             // Update particles with performance optimization using object pool
@@ -2675,6 +2705,106 @@
             return 'CULLED';
         }
         
+        // Initialize VR debug overlay
+        function initDebugOverlay() {
+            // Create debug overlay positioned in VR space
+            debugOverlay = new THREE.Group();
+            debugOverlay.position.set(2, 2, -3); // Position to upper right in VR
+            
+            // Create background panel
+            const panelGeometry = new THREE.PlaneGeometry(4, 3);
+            const panelMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000, 
+                transparent: true, 
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+            debugOverlay.add(panel);
+            
+            // Create text using canvas texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 384;
+            const context = canvas.getContext('2d');
+            
+            // Create texture from canvas
+            const texture = new THREE.CanvasTexture(canvas);
+            const textMaterial = new THREE.MeshBasicMaterial({ 
+                map: texture, 
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            
+            const textGeometry = new THREE.PlaneGeometry(4, 2.5);
+            debugText = new THREE.Mesh(textGeometry, textMaterial);
+            debugText.position.z = 0.01; // Slightly in front of panel
+            debugOverlay.add(debugText);
+            
+            // Store canvas and context for updating
+            debugText.canvas = canvas;
+            debugText.context = context;
+            debugText.texture = texture;
+            
+            scene.add(debugOverlay);
+            debugOverlay.visible = false; // Hidden by default
+            
+            console.log('🔍 Debug overlay initialized');
+        }
+
+        // Update debug overlay with current info
+        function updateDebugOverlay() {
+            if (!debugText || !debugText.context) return;
+            
+            const ctx = debugText.context;
+            const canvas = debugText.canvas;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Set text style
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '20px monospace';
+            ctx.textAlign = 'left';
+            
+            // Draw debug information
+            let y = 30;
+            ctx.fillText('=== FORCE PUNCH DEBUG ===', 10, y);
+            y += 35;
+            
+            ctx.fillText(`LEFT HAND:`, 10, y);
+            y += 25;
+            ctx.fillText(`  Fist: ${debugInfo.leftHand.isFist ? 'YES' : 'NO'}`, 10, y);
+            y += 25;
+            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
+            y += 25;
+            ctx.fillText(`  Cooldown: ${debugInfo.leftHand.cooldown.toFixed(2)}s`, 10, y);
+            y += 20;
+            ctx.fillText(`  Thumb: ${debugInfo.leftHand.thumbDist.toFixed(3)} (<0.18)`, 10, y);
+            y += 20;
+            ctx.fillText(`  Index: ${debugInfo.leftHand.indexDist.toFixed(3)} (<0.18)`, 10, y);
+            y += 20;
+            ctx.fillText(`  Middle: ${debugInfo.leftHand.middleDist.toFixed(3)} (<0.18)`, 10, y);
+            y += 30;
+            
+            ctx.fillText(`RIGHT HAND:`, 10, y);
+            y += 25;
+            ctx.fillText(`  Fist: ${debugInfo.rightHand.isFist ? 'YES' : 'NO'}`, 10, y);
+            y += 25;
+            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
+            y += 25;
+            ctx.fillText(`  Cooldown: ${debugInfo.rightHand.cooldown.toFixed(2)}s`, 10, y);
+            y += 20;
+            ctx.fillText(`  Thumb: ${debugInfo.rightHand.thumbDist.toFixed(3)} (<0.18)`, 10, y);
+            y += 20;
+            ctx.fillText(`  Index: ${debugInfo.rightHand.indexDist.toFixed(3)} (<0.18)`, 10, y);
+            y += 20;
+            ctx.fillText(`  Middle: ${debugInfo.rightHand.middleDist.toFixed(3)} (<0.18)`, 10, y);
+            
+            // Update texture
+            debugText.texture.needsUpdate = true;
+        }
+
         // Initialize teleportation system
         function initTeleportationSystem() {
             // Create teleport reticle
@@ -2757,6 +2887,9 @@
             // Initialize teleportation indicators
             initTeleportationSystem();
             
+            // Initialize debug overlay
+            initDebugOverlay();
+            
             // Setup WebXR with Quest 3 optimizations
             renderer.xr.enabled = true;
             
@@ -2827,7 +2960,8 @@
                     heldBoidIndex: null,
                     holdStartTime: 0,
                     isGrabbingBoid: false,
-                    punchVelocity: 0
+                    punchVelocity: 0,
+                    debugHandIndex: index
                 };
             });
             
