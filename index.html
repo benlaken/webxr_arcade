@@ -2389,21 +2389,26 @@
                 
                 // Update held voxel (revival mechanic)
                 if (hand.userData.heldVoxelIndex !== null) {
-                    const voxelData = fountainVoxels[hand.userData.heldVoxelIndex];
-                    if (voxelData) {
-                        heldMesh.position.copy(hand.userData.tipPositions.INDEX);
-                        heldMesh.visible = true; // Make visible when holding
-                        const chargeRatio = Math.min((elapsedTime - hand.userData.holdStartTime) / REVIVAL_TIME, 1.0);
-                        const finalColor = new THREE.Color(0x00ffaa); // Default final color
-                        heldMesh.material.color.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
-                        heldMesh.material.emissive.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
+                    // Check if we're holding a ground voxel
+                    if (hand.userData.heldVoxelIndex < groundVoxels.length) {
+                        const voxel = groundVoxels[hand.userData.heldVoxelIndex];
+                        if (voxel && hand.userData.tipPositions.INDEX) {
+                            heldMesh.position.copy(hand.userData.tipPositions.INDEX);
+                            heldMesh.visible = true; // Make visible when holding
+                            const chargeRatio = Math.min((elapsedTime - hand.userData.holdStartTime) / REVIVAL_TIME, 1.0);
+                            const finalColor = new THREE.Color(0x00ffaa); // Default final color
+                            heldMesh.material.color.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
+                            heldMesh.material.emissive.lerpColors(new THREE.Color(0x550055), finalColor, chargeRatio);
+                        }
                     }
                 } else if (hand.userData.heldBoidIndex !== null) {
                     // Update held boid position
                     const boid = boids[hand.userData.heldBoidIndex];
-                    heldMesh.position.copy(hand.userData.tipPositions.INDEX);
-                    heldMesh.visible = true; // Make visible when holding
-                    boid.position.copy(heldMesh.position);
+                    if (boid && hand.userData.tipPositions.INDEX) {
+                        heldMesh.position.copy(hand.userData.tipPositions.INDEX);
+                        heldMesh.visible = true; // Make visible when holding
+                        boid.position.copy(heldMesh.position);
+                    }
                     
                     // Visual feedback for held boid
                     const holdTime = elapsedTime - hand.userData.holdStartTime;
