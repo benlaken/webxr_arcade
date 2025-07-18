@@ -2316,7 +2316,15 @@
                     // Detect punch (fist moving fast) - ultra low threshold for testing
                     if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
                         console.log('💥 PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
+                        console.log('💥 About to call punchBlast...');
+                        
+                        // Create immediate visual feedback at hand position
+                        if (hand.userData.handCenter) {
+                            createParticleExplosion(hand.userData.handCenter.clone());
+                        }
+                        
                         punchBlast(hand);
+                        console.log('💥 punchBlast called successfully');
                         if (index === 0) {
                             punchCooldown1 = PUNCH_COOLDOWN;
                         } else {
@@ -2544,12 +2552,12 @@
                     dummy.updateMatrix();
                     aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
                     
-                    // Apply punch effect glow
+                    // Apply punch effect glow - DISABLED to fix trail dots issue
                     if (boid.punchAffected) {
                         // Create glowing effect by temporarily changing material
                         const glowIntensity = Math.sin(clock.getElapsedTime() * 8) * 0.3 + 0.7;
                         // Note: Individual material changes are expensive, so we'll use a visual trail instead
-                        createPunchTrail(boid);
+                        // createPunchTrail(boid); // DISABLED - causing trail dots
                     }
                     
                     processedBoids++;
