@@ -1555,94 +1555,73 @@
         
         function handleTeleportation(hand, elapsedTime) {
             try {
-                if (!hand.userData.isReady || !hand.userData.tipPositions.INDEX) return;
+                if (!hand.userData.isReady || !hand.userData.isPointing) {
+                    resetTeleportState();
+                    return;
+                }
                 
-                const isPointing = detectPointingGesture(hand);
+                // Perform raycast from index finger
+                const rayOrigin = hand.userData.tipPositions.INDEX.clone();
+                const rayDirection = new THREE.Vector3()
+                    .subVectors(hand.userData.tipPositions.INDEX, hand.userData.wristPosition)
+                    .normalize();
                 
-                if (isPointing) {
-                    // Perform raycast from pointing finger
-                    const rayDirection = getPointingDirection(hand);
-                    const rayOrigin = hand.userData.tipPositions.INDEX.clone();
+                teleportRaycaster.set(rayOrigin, rayDirection);
+                
+                // Raycast against ground plane (y = 0)
+                const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+                const intersectPoint = new THREE.Vector3();
+                teleportRaycaster.ray.intersectPlane(groundPlane, intersectPoint);
+                
+                if (intersectPoint) {
+                    const distance = rayOrigin.distanceTo(intersectPoint);
                     
-                    teleportRaycaster.set(rayOrigin, rayDirection);
-                    
-                    // Raycast against ground plane (y = 0)
-                    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-                    const intersectPoint = new THREE.Vector3();
-                    teleportRaycaster.ray.intersectPlane(groundPlane, intersectPoint);
-                    
-                    if (intersectPoint) {
-                        const distance = rayOrigin.distanceTo(intersectPoint);
+                    // Check if within teleport range
+                    if (distance <= TELEPORT_MAX_DISTANCE) {
+                        // Show ray line
+                        if (teleportRayLine) {
+                            const rayGeometry = teleportRayLine.geometry;
+                            const positions = rayGeometry.attributes.position.array;
+                            positions[0] = rayOrigin.x;
+                            positions[1] = rayOrigin.y;
+                            positions[2] = rayOrigin.z;
+                            positions[3] = intersectPoint.x;
+                            positions[4] = intersectPoint.y;
+                            positions[5] = intersectPoint.z;
+                            rayGeometry.attributes.position.needsUpdate = true;
+                            teleportRayLine.visible = true;
+                        }
                         
-                        // Check if within teleport range
-                        if (distance <= TELEPORT_MAX_DISTANCE) {
-                            // Show ray line from hand to target
-                            if (teleportRayLine) {
-                                const rayGeometry = teleportRayLine.geometry;
-                                const positions = rayGeometry.attributes.position.array;
-                                positions[0] = rayOrigin.x;
-                                positions[1] = rayOrigin.y;
-                                positions[2] = rayOrigin.z;
-                                positions[3] = intersectPoint.x;
-                                positions[4] = intersectPoint.y;
-                                positions[5] = intersectPoint.z;
-                                rayGeometry.attributes.position.needsUpdate = true;
-                                teleportRayLine.visible = true;
-                            }
-                            
-                            // Show reticle at target location
-                            teleportReticle.position.copy(intersectPoint);
-                            teleportReticle.visible = true;
-                            
-                            // Check if this is a new pointing gesture or continuation
-                            if (!isPointingForTeleport) {
-                                // Start new teleport attempt
-                                teleportHoldStartTime = elapsedTime;
-                                teleportTargetPosition = intersectPoint.clone();
-                                isPointingForTeleport = true;
-                                console.log('📍 Teleport targeting started...');
-                            } else {
-                                // Check if pointing is stable (accounting for hand shake)
-                                const positionDrift = intersectPoint.distanceTo(teleportTargetPosition);
-                                
-                                if (positionDrift > TELEPORT_SHAKE_TOLERANCE) {
-                                    // Too much movement, restart timer
-                                    teleportHoldStartTime = elapsedTime;
-                                    teleportTargetPosition = intersectPoint.clone();
-                                } else {
-                                    // Stable pointing, check progress
-                                    const holdTime = elapsedTime - teleportHoldStartTime;
-                                    const progress = Math.min(holdTime / TELEPORT_HOLD_TIME, 1.0);
-                                    
-                                    // Update progress indicator
-                                    teleportIndicator.position.copy(intersectPoint);
-                                    teleportIndicator.visible = true;
-                                    
-                                    // Scale indicator based on progress
-                                    const scale = 0.5 + (progress * 1.5);
-                                    teleportIndicator.scale.set(scale, 1, scale);
-                                    
-                                    // Change color based on progress
-                                    const hue = progress * 0.33; // Green to red
-                                    teleportIndicator.material.color.setHSL(hue, 1, 0.5);
-                                    
-                                    // Teleport when timer completes
-                                    if (progress >= 1.0) {
-                                        performTeleport(intersectPoint);
-                                        resetTeleportState();
-                                    }
-                                }
-                            }
+                        // Show reticle
+                        teleportReticle.position.copy(intersectPoint);
+                        teleportReticle.visible = true;
+                        
+                        // Simple timer-based teleportation
+                        if (!isPointingForTeleport) {
+                            teleportHoldStartTime = elapsedTime;
+                            teleportTargetPosition = intersectPoint.clone();
+                            isPointingForTeleport = true;
+                            console.log('📍 Teleport started');
                         } else {
-                            // Out of range
-                            resetTeleportState();
+                            const holdTime = elapsedTime - teleportHoldStartTime;
+                            const progress = Math.min(holdTime / TELEPORT_HOLD_TIME, 1.0);
+                            
+                            // Show progress
+                            teleportIndicator.position.copy(intersectPoint);
+                            teleportIndicator.visible = true;
+                            teleportIndicator.scale.set(progress * 2, 1, progress * 2);
+                            
+                            // Teleport when complete
+                            if (progress >= 1.0) {
+                                console.log('🚀 Teleporting!');
+                                performTeleport(intersectPoint);
+                                resetTeleportState();
+                            }
                         }
                     } else {
-                        // No ground intersection
                         resetTeleportState();
                     }
                 } else {
-                    // Not pointing anymore
                     resetTeleportState();
                 }
                 
@@ -2039,12 +2018,14 @@
             try {
                 const grabRadius = 0.15; // Increased grab radius
                 
-                // Start grabbing
+                // Start grabbing - SIMPLIFIED
                 if (hand.userData.isPinching && hand.userData.heldVoxelIndex === null && hand.userData.heldBoidIndex === null) {
-                    // Try to grab ground voxels first
+                    // Try to grab ground voxels
                     for (let i = 0; i < groundVoxels.length; i++) {
                         const voxel = groundVoxels[i];
-                        if (voxel && voxel.active && voxel.position && hand.userData.tipPositions.INDEX && hand.userData.tipPositions.INDEX.distanceTo(voxel.position) < grabRadius) {
+                        if (voxel && voxel.active && voxel.position) {
+                            const distance = hand.userData.handCenter.distanceTo(voxel.position);
+                            if (distance < 0.3) {
                             voxel.active = false;
                             hand.userData.heldVoxelIndex = i;
                             hand.userData.holdStartTime = clock.getElapsedTime();
@@ -2199,58 +2180,77 @@
 
         function updateHandData(hand) {
             try {
-                if (hand.joints && hand.joints['index-finger-tip'] && hand.joints['thumb-tip'] && hand.joints['middle-finger-tip']) {
-                    hand.userData.isReady = true;
-                    const thumbTip = hand.joints['thumb-tip'].position;
-                    const indexTip = hand.joints['index-finger-tip'].position;
-                    const middleTip = hand.joints['middle-finger-tip'].position;
-                    
-                    // Calculate hand center position for better velocity tracking
-                    const handCenter = new THREE.Vector3()
-                        .addVectors(thumbTip, indexTip)
-                        .add(middleTip)
-                        .divideScalar(3);
-                    
-                    // Store previous position for velocity calculation
-                    hand.userData.lastPosition.copy(hand.userData.handCenter || handCenter);
-                    
-                    hand.userData.tipPositions.THUMB.copy(thumbTip);
-                    hand.userData.tipPositions.INDEX.copy(indexTip);
-                    hand.userData.tipPositions.MIDDLE.copy(middleTip);
-                    hand.userData.handCenter = handCenter.clone();
-                    
-                    // Hand mesh models are automatically positioned by XRHandModelFactory
-                    
-                    // Calculate hand velocity using hand center for more accurate punch detection
-                    hand.userData.velocity.subVectors(handCenter, hand.userData.lastPosition);
-                    hand.userData.velocity.multiplyScalar(60); // Approximate fps for velocity
-                    
-                    // Debug velocity calculation
-                    if (frameCount % 60 === 0) {
-                        console.log('🖐️ Hand velocity:', {
-                            velocity: hand.userData.velocity.length().toFixed(3),
-                            handCenter: handCenter.toArray().map(v => v.toFixed(2)),
-                            lastPosition: hand.userData.lastPosition.toArray().map(v => v.toFixed(2))
-                        });
-                    }
-                    
-                    // Calculate shake intensity
-                    const currentSpeed = hand.userData.velocity.length();
-                    hand.userData.shakeHistory.push(currentSpeed);
-                    if (hand.userData.shakeHistory.length > 5) { // Shorter history for more responsive shaking
-                        hand.userData.shakeHistory.shift();
-                    }
-                    // Use max speed in recent history instead of average for better shake detection
-                    hand.userData.shakeIntensity = Math.max(...hand.userData.shakeHistory);
-                    
-                    // Improved pinch detection
-                    const thumbIndexDist = thumbTip.distanceTo(indexTip);
-                    const thumbMiddleDist = thumbTip.distanceTo(middleTip);
-                    hand.userData.isPinching = thumbIndexDist < 0.03 || thumbMiddleDist < 0.03;
-                } else {
-                    hand.userData.isReady = false;
-                    // Hand mesh models are automatically hidden by XRHandModelFactory
+                // Reset ready state
+                hand.userData.isReady = false;
+                
+                // Check if we have the basic joints we need
+                if (!hand.joints) {
+                    console.warn('No hand.joints available');
+                    return;
                 }
+                
+                // Get essential joints
+                const wrist = hand.joints['wrist'];
+                const indexTip = hand.joints['index-finger-tip'];
+                const thumbTip = hand.joints['thumb-tip'];
+                const middleTip = hand.joints['middle-finger-tip'];
+                
+                if (!wrist || !indexTip || !thumbTip || !middleTip) {
+                    console.warn('Missing essential hand joints');
+                    return;
+                }
+                
+                // All joints available - hand is ready
+                hand.userData.isReady = true;
+                
+                // Store previous hand center for velocity
+                const previousCenter = hand.userData.handCenter ? hand.userData.handCenter.clone() : wrist.position.clone();
+                
+                // Update finger positions
+                hand.userData.tipPositions.THUMB.copy(thumbTip.position);
+                hand.userData.tipPositions.INDEX.copy(indexTip.position);
+                hand.userData.tipPositions.MIDDLE.copy(middleTip.position);
+                hand.userData.wristPosition.copy(wrist.position);
+                
+                // Calculate hand center (use wrist as primary reference)
+                hand.userData.handCenter.copy(wrist.position);
+                
+                // Calculate velocity (simpler approach)
+                hand.userData.velocity.subVectors(hand.userData.handCenter, previousCenter);
+                hand.userData.velocity.multiplyScalar(120); // Scale for reasonable velocity values
+                
+                // Simple pinch detection
+                const thumbIndexDist = thumbTip.position.distanceTo(indexTip.position);
+                hand.userData.isPinching = thumbIndexDist < 0.04;
+                
+                // Simple fist detection - fingers close to wrist
+                const thumbToWrist = thumbTip.position.distanceTo(wrist.position);
+                const indexToWrist = indexTip.position.distanceTo(wrist.position);
+                const middleToWrist = middleTip.position.distanceTo(wrist.position);
+                hand.userData.isFist = thumbToWrist < 0.12 && indexToWrist < 0.12 && middleToWrist < 0.12;
+                
+                // Calculate punch velocity only when fist is detected
+                hand.userData.punchVelocity = hand.userData.isFist ? hand.userData.velocity.length() : 0;
+                
+                // Update debug info
+                if (hand.userData.debugHandIndex !== undefined) {
+                    const handInfo = hand.userData.debugHandIndex === 0 ? debugInfo.leftHand : debugInfo.rightHand;
+                    handInfo.isFist = hand.userData.isFist;
+                    handInfo.velocity = hand.userData.punchVelocity;
+                    handInfo.isReady = hand.userData.isReady;
+                    handInfo.thumbDist = thumbToWrist;
+                    handInfo.indexDist = indexToWrist;
+                    handInfo.middleDist = middleToWrist;
+                }
+                
+                // Pointing detection for teleportation
+                if (hand.userData.debugHandIndex === 1) { // Right hand only
+                    // Simple pointing: index finger extended, others curled
+                    const indexExtended = indexToWrist > 0.15;
+                    const othersRetracted = thumbToWrist < 0.12 && middleToWrist < 0.12;
+                    hand.userData.isPointing = indexExtended && othersRetracted;
+                }
+                
             } catch (error) {
                 console.warn('Hand tracking error:', error);
                 hand.userData.isReady = false;
@@ -2291,62 +2291,56 @@
                 // Handle teleportation (only use right hand to avoid conflicts)
                 handleTeleportation(hand2, elapsedTime);
                 
-                // Handle punch detection
+                // Handle punch detection - SIMPLIFIED
                 [hand1, hand2].forEach((hand, index) => {
                     try {
                         const currentCooldown = index === 0 ? punchCooldown1 : punchCooldown2;
                         if (currentCooldown > 0 || !hand.userData.isReady) return;
                         
-                        hand.userData.isFist = detectFist(hand);
-                    
-                    // Track punch velocity (change in fist position) - BEFORE detection
-                    if (hand.userData.isFist) {
-                        hand.userData.punchVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
-                    } else {
-                        hand.userData.punchVelocity = 0;
-                    }
-                    
-                    // Update debug info for VR overlay
-                    const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
-                    handInfo.isFist = hand.userData.isFist;
-                    handInfo.velocity = hand.userData.punchVelocity;
-                    handInfo.cooldown = currentCooldown;
-                    handInfo.isReady = hand.userData.isReady;
-                    
-                    // Detect punch (fist moving fast) - ultra low threshold for testing
-                    if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
-                        console.log('💥 PUNCH DETECTED! Velocity:', hand.userData.punchVelocity.toFixed(3));
-                        console.log('💥 About to call punchBlast...');
+                        // Update debug info
+                        const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
+                        handInfo.isFist = hand.userData.isFist;
+                        handInfo.velocity = hand.userData.punchVelocity;
+                        handInfo.cooldown = currentCooldown;
+                        handInfo.isReady = hand.userData.isReady;
                         
-                        // Create immediate visual feedback at hand position
-                        if (hand.userData.handCenter) {
+                        // Simple punch detection: fist + fast movement
+                        if (hand.userData.isFist && hand.userData.punchVelocity > 0.3) {
+                            console.log('💥 PUNCH! Velocity:', hand.userData.punchVelocity.toFixed(3));
+                            
+                            // Immediate visual feedback
                             createParticleExplosion(hand.userData.handCenter.clone());
+                            
+                            // Create blast effect
+                            createPunchBlastEffect(hand.userData.handCenter, hand.userData.velocity.clone().normalize());
+                            
+                            // Affect nearby boids
+                            let affectedCount = 0;
+                            boids.forEach(boid => {
+                                if (boid && boid.position) {
+                                    const distance = hand.userData.handCenter.distanceTo(boid.position);
+                                    if (distance < 3.0) {
+                                        const pushDirection = new THREE.Vector3().subVectors(boid.position, hand.userData.handCenter).normalize();
+                                        boid.velocity.add(pushDirection.multiplyScalar(2.0));
+                                        affectedCount++;
+                                    }
+                                }
+                            });
+                            
+                            console.log(`💥 Punch affected ${affectedCount} boids!`);
+                            
+                            // Set cooldown
+                            if (index === 0) {
+                                punchCooldown1 = PUNCH_COOLDOWN;
+                            } else {
+                                punchCooldown2 = PUNCH_COOLDOWN;
+                            }
                         }
                         
-                        punchBlast(hand);
-                        console.log('💥 punchBlast called successfully');
-                        if (index === 0) {
-                            punchCooldown1 = PUNCH_COOLDOWN;
-                        } else {
-                            punchCooldown2 = PUNCH_COOLDOWN;
-                        }
+                    } catch (error) {
+                        console.warn('Punch detection error:', error);
                     }
-                    
-                    // Debug punch detection - more aggressive logging
-                    if (frameCount % 30 === 0) {
-                        console.log('✊ Punch debug:', {
-                            isFist: hand.userData.isFist,
-                            punchVelocity: hand.userData.punchVelocity.toFixed(3),
-                            threshold: '0.05',
-                            willPunch: hand.userData.isFist && hand.userData.punchVelocity > 0.05,
-                            handIndex: index,
-                            cooldown: currentCooldown.toFixed(2)
-                        });
-                    }
-                } catch (error) {
-                    console.warn('Punch detection error:', error);
-                }
-            });
+                });
             }
             
             // Update debug overlay in VR mode
@@ -2975,13 +2969,12 @@
                         INDEX: new THREE.Vector3(),
                         MIDDLE: new THREE.Vector3()
                     },
-                    lastPosition: new THREE.Vector3(),
+                    wristPosition: new THREE.Vector3(),
                     handCenter: new THREE.Vector3(),
                     velocity: new THREE.Vector3(),
-                    shakeHistory: [0, 0, 0, 0, 0],
-                    shakeIntensity: 0,
                     isPinching: false,
                     isFist: false,
+                    isPointing: false,
                     isReady: false,
                     heldVoxelIndex: null,
                     heldBoidIndex: null,
