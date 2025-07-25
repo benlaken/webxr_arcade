@@ -2026,15 +2026,16 @@
                         if (voxel && voxel.active && voxel.position) {
                             const distance = hand.userData.handCenter.distanceTo(voxel.position);
                             if (distance < 0.3) {
-                            voxel.active = false;
-                            hand.userData.heldVoxelIndex = i;
-                            hand.userData.holdStartTime = clock.getElapsedTime();
-                            
-                            heldVoxelMesh.material.color.set(0x6666ff);
-                            heldVoxelMesh.material.emissive.set(0x2222bb);
-                            heldVoxelMesh.visible = true;
-                            console.log('Grabbed ground voxel', i);
-                            return;
+                                voxel.active = false;
+                                hand.userData.heldVoxelIndex = i;
+                                hand.userData.holdStartTime = clock.getElapsedTime();
+                                
+                                heldVoxelMesh.material.color.set(0x6666ff);
+                                heldVoxelMesh.material.emissive.set(0x2222bb);
+                                heldVoxelMesh.visible = true;
+                                console.log('Grabbed ground voxel', i);
+                                return;
+                            }
                         }
                     }
                     
