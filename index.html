@@ -1660,38 +1660,48 @@
             try {
                 console.log('🚀 Teleporting to:', targetPosition);
                 
-                // Proper VR teleportation using the camera's parent (the VR reference space)
-                const cameraParent = camera.parent;
-                
-                if (cameraParent) {
-                    // Get current user position in world space
-                    const currentUserPosition = new THREE.Vector3();
-                    camera.getWorldPosition(currentUserPosition);
+                if (renderer.xr.isPresenting) {
+                    // VR Mode: Use XR reference space
+                    const xrReferenceSpace = renderer.xr.getReferenceSpace();
+                    const session = renderer.xr.getSession();
                     
-                    // Calculate offset needed to move user to target position
-                    const offset = new THREE.Vector3()
-                        .subVectors(targetPosition, currentUserPosition);
-                    
-                    // Keep user at proper VR height (don't teleport vertically)
-                    offset.y = 0;
-                    
-                    // Apply the offset to the camera's parent (VR reference space)
-                    cameraParent.position.add(offset);
-                    
-                    console.log('✅ VR Teleport completed! Offset:', offset.toArray().map(v => v.toFixed(2)));
+                    if (session && session.requestReferenceSpace) {
+                        // Calculate offset to teleport position
+                        // Keep the user at ground level + comfortable VR height
+                        const teleportY = 1.6; // Standard VR height above ground
+                        const teleportVector = new THREE.Vector3(targetPosition.x, teleportY, targetPosition.z);
+                        
+                        // Create transform that moves the user to the target position
+                        const transform = new XRRigidTransform(
+                            {x: -teleportVector.x, y: -teleportVector.y, z: -teleportVector.z},
+                            {x: 0, y: 0, z: 0, w: 1}
+                        );
+                        
+                        // Apply the teleport by offsetting the reference space
+                        const offsetReferenceSpace = xrReferenceSpace.getOffsetReferenceSpace(transform);
+                        renderer.xr.setReferenceSpace(offsetReferenceSpace);
+                        
+                        console.log('✅ XR Teleport completed to:', teleportVector.toArray().map(v => v.toFixed(2)));
+                    } else {
+                        // Fallback: Move the VR camera group
+                        const vrCamera = renderer.xr.getCamera();
+                        if (vrCamera.parent) {
+                            vrCamera.parent.position.set(
+                                -targetPosition.x,
+                                1.6 - targetPosition.y, // Keep above ground
+                                -targetPosition.z
+                            );
+                            console.log('✅ VR Camera teleport completed');
+                        }
+                    }
                 } else {
-                    // Fallback for non-VR mode - move scene
-                    const currentOffset = scene.position.clone();
-                    const userPosition = new THREE.Vector3(0, 1.8, 3); // Default camera position
-                    
-                    const newOffset = new THREE.Vector3(
-                        userPosition.x - targetPosition.x,
-                        userPosition.y - targetPosition.y,
-                        userPosition.z - targetPosition.z
+                    // Desktop mode - move scene
+                    scene.position.set(
+                        -targetPosition.x,
+                        -targetPosition.y + 1.6,
+                        -targetPosition.z
                     );
-                    
-                    scene.position.copy(newOffset);
-                    console.log('✅ Fallback teleport completed!');
+                    console.log('✅ Desktop teleport completed');
                 }
                 
                 // Create teleport effect
