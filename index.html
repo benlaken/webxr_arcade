@@ -2315,9 +2315,14 @@
                         handInfo.cooldown = currentCooldown;
                         handInfo.isReady = hand.userData.isReady;
                         
-                        // Simple punch detection: fist + fast movement
-                        if (hand.userData.isFist && hand.userData.punchVelocity > 0.3) {
-                            console.log('💥 PUNCH! Velocity:', hand.userData.punchVelocity.toFixed(3));
+                        // Simple punch detection: fist + fast movement  
+                        // Add debug logging for punch conditions
+                        if (frameCount % 30 === 0 && hand.userData.isFist) {
+                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, Velocity=${hand.userData.punchVelocity.toFixed(3)}, Will punch=${hand.userData.punchVelocity > 0.05}`);
+                        }
+                        
+                        if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
+                            console.log('💥 PUNCH TRIGGERED! Hand:', index, 'Velocity:', hand.userData.punchVelocity.toFixed(3));
                             
                             // Immediate visual feedback
                             createParticleExplosion(hand.userData.handCenter.clone());
