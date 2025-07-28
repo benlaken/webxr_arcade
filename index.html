@@ -239,8 +239,8 @@
         let debugOverlay = null;
         let debugText = null;
         let debugInfo = {
-            leftHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false },
-            rightHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false },
+            leftHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false, punchCount: 0 },
+            rightHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false, punchCount: 0 },
             frameCount: 0
         };
 
@@ -2234,11 +2234,20 @@
                 const thumbIndexDist = thumbTip.position.distanceTo(indexTip.position);
                 hand.userData.isPinching = thumbIndexDist < 0.04;
                 
-                // Simple fist detection - fingers close to wrist
+                // Improved fist detection - fingers close to wrist with weighted scoring
                 const thumbToWrist = thumbTip.position.distanceTo(wrist.position);
                 const indexToWrist = indexTip.position.distanceTo(wrist.position);
                 const middleToWrist = middleTip.position.distanceTo(wrist.position);
-                hand.userData.isFist = thumbToWrist < 0.12 && indexToWrist < 0.12 && middleToWrist < 0.12;
+                
+                // More reliable fist detection - require at least 2 of 3 fingers to be close
+                const fistThreshold = 0.16;
+                const closedFingers = [
+                    thumbToWrist < fistThreshold,
+                    indexToWrist < fistThreshold, 
+                    middleToWrist < fistThreshold
+                ].filter(closed => closed).length;
+                
+                hand.userData.isFist = closedFingers >= 2;
                 
                 // Calculate punch velocity only when fist is detected
                 hand.userData.punchVelocity = hand.userData.isFist ? hand.userData.velocity.length() : 0;
@@ -2323,6 +2332,10 @@
                         
                         if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
                             console.log('💥 PUNCH TRIGGERED! Hand:', index, 'Velocity:', hand.userData.punchVelocity.toFixed(3));
+                            
+                            // Increment punch counter
+                            const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
+                            handInfo.punchCount++;
                             
                             // Immediate visual feedback
                             createParticleExplosion(hand.userData.handCenter.clone());
@@ -2813,13 +2826,15 @@
             y += 20;
             ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
             y += 20;
+            ctx.fillText(`  Punches: ${debugInfo.leftHand.punchCount}`, 10, y);
+            y += 20;
             ctx.fillText(`  Cooldown: ${debugInfo.leftHand.cooldown.toFixed(2)}s`, 10, y);
             y += 20;
-            ctx.fillText(`  Thumb: ${debugInfo.leftHand.thumbDist.toFixed(3)} (<0.18)`, 10, y);
+            ctx.fillText(`  Thumb: ${debugInfo.leftHand.thumbDist.toFixed(3)} (<0.16)`, 10, y);
             y += 20;
-            ctx.fillText(`  Index: ${debugInfo.leftHand.indexDist.toFixed(3)} (<0.18)`, 10, y);
+            ctx.fillText(`  Index: ${debugInfo.leftHand.indexDist.toFixed(3)} (<0.16)`, 10, y);
             y += 20;
-            ctx.fillText(`  Middle: ${debugInfo.leftHand.middleDist.toFixed(3)} (<0.18)`, 10, y);
+            ctx.fillText(`  Middle: ${debugInfo.leftHand.middleDist.toFixed(3)} (<0.16)`, 10, y);
             y += 30;
             
             ctx.fillText(`RIGHT HAND:`, 10, y);
@@ -2830,13 +2845,15 @@
             y += 20;
             ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
             y += 20;
+            ctx.fillText(`  Punches: ${debugInfo.rightHand.punchCount}`, 10, y);
+            y += 20;
             ctx.fillText(`  Cooldown: ${debugInfo.rightHand.cooldown.toFixed(2)}s`, 10, y);
             y += 20;
-            ctx.fillText(`  Thumb: ${debugInfo.rightHand.thumbDist.toFixed(3)} (<0.18)`, 10, y);
+            ctx.fillText(`  Thumb: ${debugInfo.rightHand.thumbDist.toFixed(3)} (<0.16)`, 10, y);
             y += 20;
-            ctx.fillText(`  Index: ${debugInfo.rightHand.indexDist.toFixed(3)} (<0.18)`, 10, y);
+            ctx.fillText(`  Index: ${debugInfo.rightHand.indexDist.toFixed(3)} (<0.16)`, 10, y);
             y += 20;
-            ctx.fillText(`  Middle: ${debugInfo.rightHand.middleDist.toFixed(3)} (<0.18)`, 10, y);
+            ctx.fillText(`  Middle: ${debugInfo.rightHand.middleDist.toFixed(3)} (<0.16)`, 10, y);
             
             // Update texture
             debugText.texture.needsUpdate = true;
