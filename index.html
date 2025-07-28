@@ -2315,7 +2315,12 @@
                 [hand1, hand2].forEach((hand, index) => {
                     try {
                         const currentCooldown = index === 0 ? punchCooldown1 : punchCooldown2;
-                        if (currentCooldown > 0 || !hand.userData.isReady) return;
+                        if (currentCooldown > 0 || !hand.userData.isReady) {
+                            if (frameCount % 60 === 0 && currentCooldown > 0) {
+                                console.log(`⏰ Hand ${index} on cooldown: ${currentCooldown.toFixed(2)}s remaining`);
+                            }
+                            return;
+                        }
                         
                         // Update debug info
                         const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
@@ -2331,11 +2336,11 @@
                         }
                         
                         if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
-                            console.log('💥 PUNCH TRIGGERED! Hand:', index, 'Velocity:', hand.userData.punchVelocity.toFixed(3));
+                            console.log('💥 PUNCH TRIGGERED! Hand:', index, 'Velocity:', hand.userData.punchVelocity.toFixed(3), 'Previous count:', handInfo.punchCount);
                             
                             // Increment punch counter
-                            const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
                             handInfo.punchCount++;
+                            console.log('🔢 New punch count for hand', index, ':', handInfo.punchCount);
                             
                             // Immediate visual feedback
                             createParticleExplosion(hand.userData.handCenter.clone());
