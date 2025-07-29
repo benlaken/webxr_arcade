@@ -2213,8 +2213,9 @@
                 // All joints available - hand is ready
                 hand.userData.isReady = true;
                 
-                // Store previous hand center for velocity
-                const previousCenter = hand.userData.handCenter ? hand.userData.handCenter.clone() : wrist.position.clone();
+                // Store previous hand center for velocity - prevent initial velocity spike
+                const isFirstFrame = !hand.userData.handCenter || hand.userData.handCenter.length() === 0;
+                const previousCenter = isFirstFrame ? wrist.position.clone() : hand.userData.handCenter.clone();
                 
                 // Smooth joint positions to handle tracking loss (lerp with previous if valid)
                 const smoothingFactor = 0.8; // Adjust for smoother tracking
@@ -2237,10 +2238,18 @@
                 // Calculate hand center (use wrist as primary reference)
                 hand.userData.handCenter.copy(hand.userData.wristPosition);
                 
-                // Calculate velocity (simpler approach)
-                hand.userData.velocity.subVectors(hand.userData.handCenter, previousCenter);
-                hand.userData.velocity.multiplyScalar(120); // Scale for reasonable velocity values
-                hand.userData.velocity.clampLength(0, 10); // Clamp to prevent extreme values from tracking glitches
+                // Calculate velocity (simpler approach) - prevent initial spikes
+                if (isFirstFrame) {
+                    hand.userData.velocity.set(0, 0, 0); // Zero velocity on first frame
+                    hand.userData.startupFrames = 0; // Initialize startup counter
+                } else {
+                    hand.userData.velocity.subVectors(hand.userData.handCenter, previousCenter);
+                    hand.userData.velocity.multiplyScalar(120); // Scale for reasonable velocity values
+                    hand.userData.velocity.clampLength(0, 10); // Clamp to prevent extreme values from tracking glitches
+                }
+                
+                // Increment startup counter
+                hand.userData.startupFrames = (hand.userData.startupFrames || 0) + 1;
                 
                 // Simple pinch detection
                 const thumbIndexDist = hand.userData.tipPositions.THUMB.distanceTo(hand.userData.tipPositions.INDEX);
@@ -2327,9 +2336,15 @@
                 [hand1, hand2].forEach((hand, index) => {
                     try {
                         const currentCooldown = index === 0 ? punchCooldown1 : punchCooldown2;
-                        if (currentCooldown > 0 || !hand.userData.isReady) {
+                        const startupFrames = hand.userData.startupFrames || 0;
+                        
+                        // Require startup grace period and no cooldown
+                        if (currentCooldown > 0 || !hand.userData.isReady || startupFrames < 60) {
                             if (frameCount % 60 === 0 && currentCooldown > 0) {
                                 console.log(`⏰ Hand ${index} on cooldown: ${currentCooldown.toFixed(2)}s remaining`);
+                            }
+                            if (frameCount % 60 === 0 && startupFrames < 60) {
+                                console.log(`🚀 Hand ${index} in startup: ${startupFrames}/60 frames`);
                             }
                             return;
                         }
