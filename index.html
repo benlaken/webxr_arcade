@@ -1668,17 +1668,25 @@
                         // Calculate offset to teleport position
                         // Keep the user at ground level + comfortable VR height
                         const teleportY = 1.6; // Standard VR height above ground
-                        const teleportVector = new THREE.Vector3(targetPosition.x, teleportY, targetPosition.z);
-                        
-                        // Create transform that moves the user to the target position
-                        const transform = new XRRigidTransform(
-                            {x: -teleportVector.x, y: -teleportVector.y, z: -teleportVector.z},
-                            {x: 0, y: 0, z: 0, w: 1}
-                        );
-                        
-                        // Apply the teleport by offsetting the reference space
-                        const offsetReferenceSpace = xrReferenceSpace.getOffsetReferenceSpace(transform);
-                        renderer.xr.setReferenceSpace(offsetReferenceSpace);
+                        // Get current reference space position
+                        const currentPose = renderer.xr.getFrame().getViewerPose(xrReferenceSpace);
+                        if (currentPose) {
+                            const currentPosition = currentPose.transform.position;
+                            const offsetX = targetPosition.x - currentPosition.x;
+                            const offsetY = teleportY - currentPosition.y; // Adjust to ground level + height
+                            const offsetZ = targetPosition.z - currentPosition.z;
+                            
+                            const transform = new XRRigidTransform(
+                                {x: offsetX, y: offsetY, z: offsetZ},
+                                {x: 0, y: 0, z: 0, w: 1}
+                            );
+                            
+                            const offsetReferenceSpace = xrReferenceSpace.getOffsetReferenceSpace(transform);
+                            renderer.xr.setReferenceSpace(offsetReferenceSpace);
+                            console.log('✅ XR Teleport completed with offset:', {offsetX, offsetY, offsetZ});
+                        } else {
+                            console.warn('⚠️ Could not get current viewer pose for teleport');
+                        }
                         
                         console.log('✅ XR Teleport completed to:', teleportVector.toArray().map(v => v.toFixed(2)));
                     } else {
@@ -2261,7 +2269,7 @@
                 const middleToWrist = hand.userData.tipPositions.MIDDLE.distanceTo(hand.userData.wristPosition);
                 
                 // More reliable fist detection - require at least 2 of 3 fingers to be close
-                const fistThreshold = 0.16;
+                const fistThreshold = 0.12;
                 const closedFingers = [
                     thumbToWrist < fistThreshold,
                     indexToWrist < fistThreshold, 
@@ -2271,7 +2279,13 @@
                 hand.userData.isFist = closedFingers >= 2;
                 
                 // Calculate punch velocity only when fist is detected
-                hand.userData.punchVelocity = hand.userData.isFist ? hand.userData.velocity.length() : 0;
+                hand.userData.recentMaxVelocity = hand.userData.recentMaxVelocity || 0;
+                if (hand.userData.isFist) {
+                  hand.userData.recentMaxVelocity = Math.max(hand.userData.recentMaxVelocity, hand.userData.velocity.length());
+                } else {
+                  hand.userData.recentMaxVelocity = 0;
+                }
+                hand.userData.punchVelocity = hand.userData.isFist ? hand.userData.recentMaxVelocity : 0;
                 
                 // Update debug info
                 if (hand.userData.debugHandIndex !== undefined) {
@@ -2359,10 +2373,10 @@
                         // Simple punch detection: fist + fast movement  
                         // Add debug logging for punch conditions
                         if (frameCount % 30 === 0 && hand.userData.isFist) {
-                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, Velocity=${hand.userData.punchVelocity.toFixed(3)}, Will punch=${hand.userData.punchVelocity > 0.05}`);
+                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, Velocity=${hand.userData.punchVelocity.toFixed(3)}, Will punch=${hand.userData.punchVelocity > 1.5}`);
                         }
                         
-                        if (hand.userData.isFist && hand.userData.punchVelocity > 0.05) {
+                        if (hand.userData.isFist && hand.userData.punchVelocity > 1.5) {
                             console.log('💥 PUNCH TRIGGERED! Hand:', index, 'Velocity:', hand.userData.punchVelocity.toFixed(3), 'Previous count:', handInfo.punchCount);
                             
                             // Increment punch counter
@@ -2396,6 +2410,7 @@
                             } else {
                                 punchCooldown2 = PUNCH_COOLDOWN;
                             }
+                            hand.userData.recentMaxVelocity = 0;
                         }
                         
                     } catch (error) {
@@ -2858,7 +2873,7 @@
             y += 20;
             ctx.fillText(`  Fist: ${debugInfo.leftHand.isFist ? 'YES' : 'NO'}`, 10, y);
             y += 20;
-            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
+            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >1.5)`, 10, y);
             y += 20;
             ctx.fillText(`  Punches: ${debugInfo.leftHand.punchCount}`, 10, y);
             y += 20;
@@ -2877,7 +2892,7 @@
             y += 20;
             ctx.fillText(`  Fist: ${debugInfo.rightHand.isFist ? 'YES' : 'NO'}`, 10, y);
             y += 20;
-            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >0.05)`, 10, y);
+            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >1.5)`, 10, y);
             y += 20;
             ctx.fillText(`  Punches: ${debugInfo.rightHand.punchCount}`, 10, y);
             y += 20;
