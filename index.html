@@ -2542,27 +2542,7 @@
                 let processedBoids = 0;
                 const maxBoidsPerFrame = Math.ceil(boids.length * currentQualityLevel);
                 
-                // Prepare data for worker
-                const boidData = boids.map(boid => ({
-                    position: boid.position.toArray(),
-                    velocity: boid.velocity.toArray(),
-                    isGrabbed: boid.isGrabbed,
-                    isBeingTossed: boid.isBeingTossed
-                }));
-                
-                const handData = [hand1, hand2].map(hand => hand.userData.tipPositions.MIDDLE.toArray());
-                const predatorData = predators.map(pred => pred.position.toArray());
-                
-                // Send to worker
-                flockWorker.postMessage({ boids: boidData, hands: handData, predators: predatorData });
-                
-                flockWorker.onmessage = (e) => {
-                    const updatedBoids = e.data;
-                    updatedBoids.forEach((data, i) => {
-                        boids[i].acceleration.fromArray(data.acceleration);
-                        boids[i].velocity.fromArray(data.velocity);
-                    });
-                };
+                // LOD-based flocking updates for performance
                 
                 boids.forEach((boid, i) => {
                     // Skip some boids based on quality level for 120fps
@@ -2580,16 +2560,29 @@
                     }
                     
                     if (!boid.isGrabbed && (inFrustum || distanceToCamera < CULLING_DISTANCE)) {
+                        // Update frequency based on LOD level
+                        let updateThisFrame = false;
+                        switch(lodLevel) {
+                            case 'CLOSE':
+                                updateThisFrame = true; // Always update close objects
+                                break;
+                            case 'MEDIUM':
+                                updateThisFrame = shouldUpdateFlocking || boid.isBeingTossed;
+                                break;
+                            case 'FAR':
+                                updateThisFrame = (frameCount % (OPTIMIZATION_INTERVAL * 2) === 0) || boid.isBeingTossed;
+                                break;
+                        }
+                        
+                        if (updateThisFrame) {
+                            // Use spatial partitioning for nearby boids instead of all boids
+                            const nearbyBoids = spatialGrid.getNearby(boid.position, 3.0);
+                            boid.flock(nearbyBoids, [hand1, hand2], [], predators);
+                        }
                         boid.checkBounds();
                     }
                     
-                    // Fixed timestep for physics
-                    const fixedStep = 1 / 60; // 60Hz physics
-                    boid.accumulator = (boid.accumulator || 0) + deltaTime;
-                    while (boid.accumulator >= fixedStep) {
-                        boid.update(fixedStep);
-                        boid.accumulator -= fixedStep;
-                    }
+                    boid.update();
                     dummy.position.copy(boid.position);
                     
                     // Fix spinning issue: use smoothed direction instead of raw velocity
