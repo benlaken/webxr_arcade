@@ -2916,7 +2916,11 @@
             
             // Initialize camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1.6, 3);
+            const playerRig = new THREE.Group();
+            scene.add(playerRig);
+            playerRig.add(camera);
+            playerRig.position.set(0, 0, 3);
+            camera.position.set(0, 1.6, 0);
             
             // Initialize renderer with Quest 3 120fps optimizations
             renderer = new THREE.WebGLRenderer({ 
@@ -2966,7 +2970,8 @@
                                     depth: true,
                                     stencil: false,
                                     framebufferScaleFactor: 0.8 // Reduce resolution for 120fps
-                                })
+                                }),
+                                refreshRate: 120
                             });
                             console.log('🚀 Quest 3 120fps mode enabled with foveated rendering');
                         }
@@ -2984,7 +2989,7 @@
             const handModel1 = handModelFactory.createHandModel(hand1, 'mesh');
             handModel1.name = 'leftHandMesh';
             hand1.add(handModel1);
-            scene.add(hand1);
+            playerRig.add(hand1);
             console.log('✋ Left hand model created:', handModel1.type || 'mesh');
             
             // Right hand (index 1)  
@@ -2992,7 +2997,7 @@
             const handModel2 = handModelFactory.createHandModel(hand2, 'mesh');
             handModel2.name = 'rightHandMesh';
             hand2.add(handModel2);
-            scene.add(hand2);
+            playerRig.add(hand2);
             console.log('✋ Right hand model created:', handModel2.type || 'mesh');
             
             // Ensure no sphere fallback - force mesh type only
