@@ -1387,12 +1387,11 @@
             // Create geometry and material for boids
             const boidSize = 0.15; // Larger for better VR visibility
             const boidGeometry = new THREE.BoxGeometry(boidSize, boidSize, boidSize);
-            const boidMaterial = new THREE.MeshLambertMaterial({ 
+            const boidMaterial = new THREE.MeshBasicMaterial({ 
                 color: 0x00ffaa, 
-                transparent: true,
-                opacity: 0.9,
-                emissive: 0x002244
-            });
+                transparent: false, // Disable for mobile perf
+                opacity: 1.0
+            }); // Switched to Basic for Quest 3 perf, removed emissive as Basic doesn't support it
             
             // Create instanced mesh for boids
             const boidsMesh = new THREE.InstancedMesh(boidGeometry, boidMaterial, initialBoidCount);
@@ -2217,27 +2216,40 @@
                 // Store previous hand center for velocity
                 const previousCenter = hand.userData.handCenter ? hand.userData.handCenter.clone() : wrist.position.clone();
                 
-                // Update finger positions
-                hand.userData.tipPositions.THUMB.copy(thumbTip.position);
-                hand.userData.tipPositions.INDEX.copy(indexTip.position);
-                hand.userData.tipPositions.MIDDLE.copy(middleTip.position);
-                hand.userData.wristPosition.copy(wrist.position);
+                // Smooth joint positions to handle tracking loss (lerp with previous if valid)
+                const smoothingFactor = 0.8; // Adjust for smoother tracking
+                if (!hand.userData.prevThumb) hand.userData.prevThumb = new THREE.Vector3();
+                if (!hand.userData.prevIndex) hand.userData.prevIndex = new THREE.Vector3();
+                if (!hand.userData.prevMiddle) hand.userData.prevMiddle = new THREE.Vector3();
+                if (!hand.userData.prevWrist) hand.userData.prevWrist = new THREE.Vector3();
+                
+                hand.userData.tipPositions.THUMB.lerpVectors(hand.userData.prevThumb, thumbTip.position, smoothingFactor);
+                hand.userData.tipPositions.INDEX.lerpVectors(hand.userData.prevIndex, indexTip.position, smoothingFactor);
+                hand.userData.tipPositions.MIDDLE.lerpVectors(hand.userData.prevMiddle, middleTip.position, smoothingFactor);
+                hand.userData.wristPosition.lerpVectors(hand.userData.prevWrist, wrist.position, smoothingFactor);
+                
+                // Update previous positions
+                hand.userData.prevThumb.copy(hand.userData.tipPositions.THUMB);
+                hand.userData.prevIndex.copy(hand.userData.tipPositions.INDEX);
+                hand.userData.prevMiddle.copy(hand.userData.tipPositions.MIDDLE);
+                hand.userData.prevWrist.copy(hand.userData.wristPosition);
                 
                 // Calculate hand center (use wrist as primary reference)
-                hand.userData.handCenter.copy(wrist.position);
+                hand.userData.handCenter.copy(hand.userData.wristPosition);
                 
                 // Calculate velocity (simpler approach)
                 hand.userData.velocity.subVectors(hand.userData.handCenter, previousCenter);
                 hand.userData.velocity.multiplyScalar(120); // Scale for reasonable velocity values
+                hand.userData.velocity.clampLength(0, 10); // Clamp to prevent extreme values from tracking glitches
                 
                 // Simple pinch detection
-                const thumbIndexDist = thumbTip.position.distanceTo(indexTip.position);
+                const thumbIndexDist = hand.userData.tipPositions.THUMB.distanceTo(hand.userData.tipPositions.INDEX);
                 hand.userData.isPinching = thumbIndexDist < 0.04;
                 
                 // Improved fist detection - fingers close to wrist with weighted scoring
-                const thumbToWrist = thumbTip.position.distanceTo(wrist.position);
-                const indexToWrist = indexTip.position.distanceTo(wrist.position);
-                const middleToWrist = middleTip.position.distanceTo(wrist.position);
+                const thumbToWrist = hand.userData.tipPositions.THUMB.distanceTo(hand.userData.wristPosition);
+                const indexToWrist = hand.userData.tipPositions.INDEX.distanceTo(hand.userData.wristPosition);
+                const middleToWrist = hand.userData.tipPositions.MIDDLE.distanceTo(hand.userData.wristPosition);
                 
                 // More reliable fist detection - require at least 2 of 3 fingers to be close
                 const fistThreshold = 0.16;
@@ -2530,6 +2542,28 @@
                 let processedBoids = 0;
                 const maxBoidsPerFrame = Math.ceil(boids.length * currentQualityLevel);
                 
+                // Prepare data for worker
+                const boidData = boids.map(boid => ({
+                    position: boid.position.toArray(),
+                    velocity: boid.velocity.toArray(),
+                    isGrabbed: boid.isGrabbed,
+                    isBeingTossed: boid.isBeingTossed
+                }));
+                
+                const handData = [hand1, hand2].map(hand => hand.userData.tipPositions.MIDDLE.toArray());
+                const predatorData = predators.map(pred => pred.position.toArray());
+                
+                // Send to worker
+                flockWorker.postMessage({ boids: boidData, hands: handData, predators: predatorData });
+                
+                flockWorker.onmessage = (e) => {
+                    const updatedBoids = e.data;
+                    updatedBoids.forEach((data, i) => {
+                        boids[i].acceleration.fromArray(data.acceleration);
+                        boids[i].velocity.fromArray(data.velocity);
+                    });
+                };
+                
                 boids.forEach((boid, i) => {
                     // Skip some boids based on quality level for 120fps
                     if (processedBoids >= maxBoidsPerFrame && !boid.isGrabbed) {
@@ -2546,29 +2580,16 @@
                     }
                     
                     if (!boid.isGrabbed && (inFrustum || distanceToCamera < CULLING_DISTANCE)) {
-                        // Update frequency based on LOD level
-                        let updateThisFrame = false;
-                        switch(lodLevel) {
-                            case 'CLOSE':
-                                updateThisFrame = true; // Always update close objects
-                                break;
-                            case 'MEDIUM':
-                                updateThisFrame = shouldUpdateFlocking || boid.isBeingTossed;
-                                break;
-                            case 'FAR':
-                                updateThisFrame = (frameCount % (OPTIMIZATION_INTERVAL * 2) === 0) || boid.isBeingTossed;
-                                break;
-                        }
-                        
-                        if (updateThisFrame) {
-                            // Use spatial partitioning for nearby boids instead of all boids
-                            const nearbyBoids = spatialGrid.getNearby(boid.position, 3.0);
-                            boid.flock(nearbyBoids, [hand1, hand2], [], predators);
-                        }
                         boid.checkBounds();
                     }
                     
-                    boid.update();
+                    // Fixed timestep for physics
+                    const fixedStep = 1 / 60; // 60Hz physics
+                    boid.accumulator = (boid.accumulator || 0) + deltaTime;
+                    while (boid.accumulator >= fixedStep) {
+                        boid.update(fixedStep);
+                        boid.accumulator -= fixedStep;
+                    }
                     dummy.position.copy(boid.position);
                     
                     // Fix spinning issue: use smoothed direction instead of raw velocity
@@ -2909,7 +2930,7 @@
             console.log('🚀 Teleportation system initialized');
         }
 
-        function init() {
+        async function init() {
             // Initialize Three.js scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a0a);
@@ -3037,26 +3058,16 @@
             directionalLight.castShadow = true;
             scene.add(directionalLight);
             
-            // Create boids
-            for (let i = 0; i < initialBoidCount; i++) {
-                const boid = new Boid(
-                    new THREE.Vector3(
-                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS,
-                        Math.random() * (ATMOSPHERE_MAX_HEIGHT - 2) + 2, // 2-28m height
-                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS
-                    )
-                );
-                boids.push(boid);
-            }
+            // Create boids async
+            await createBoidsAsync();
             
-            // Create world content
-            createVectorGridGround();
-            // Tron trees removed for performance
-            // Fountain system removed - too problematic
-            createGroundVoxels();
-            createBoidsSystem();
-            // Game of Life monolith removed for performance
-            createSpaceBattle();
+            // Create world content async
+            await Promise.all([
+                createVectorGridGround(),
+                createGroundVoxels(),
+                createBoidsSystem(),
+                createSpaceBattle()
+            ]);
             
             // Setup event listeners
             window.addEventListener('resize', onWindowResize);
@@ -3066,6 +3077,20 @@
             
             // Start animation loop
             renderer.setAnimationLoop(animate);
+        }
+
+        async function createBoidsAsync() {
+            for (let i = 0; i < initialBoidCount; i++) {
+                const boid = new Boid(
+                    new THREE.Vector3(
+                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS,
+                        Math.random() * (ATMOSPHERE_MAX_HEIGHT - 2) + 2, // 2-28m height
+                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS
+                    )
+                );
+                boids.push(boid);
+                if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0)); // Yield to prevent blocking
+            }
         }
         
         function animate() {
