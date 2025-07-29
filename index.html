@@ -2790,7 +2790,7 @@
             debugOverlay.position.set(2, 2, -3); // Position to upper right in VR
             
             // Create background panel
-            const panelGeometry = new THREE.PlaneGeometry(4, 3);
+            const panelGeometry = new THREE.PlaneGeometry(6, 4.5);
             const panelMaterial = new THREE.MeshBasicMaterial({ 
                 color: 0x000000, 
                 transparent: true, 
@@ -2802,8 +2802,8 @@
             
             // Create text using canvas texture
             const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 384;
+            canvas.width = 800;
+            canvas.height = 600;
             const context = canvas.getContext('2d');
             
             // Create texture from canvas
@@ -2814,7 +2814,7 @@
                 side: THREE.DoubleSide
             });
             
-            const textGeometry = new THREE.PlaneGeometry(4, 2.5);
+            const textGeometry = new THREE.PlaneGeometry(6, 4);
             debugText = new THREE.Mesh(textGeometry, textMaterial);
             debugText.position.z = 0.01; // Slightly in front of panel
             debugOverlay.add(debugText);
