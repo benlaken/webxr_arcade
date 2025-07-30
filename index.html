@@ -2495,9 +2495,15 @@
             // Update punch cooldowns
             if (punchCooldown1 > 0) {
                 punchCooldown1 -= deltaTime;
+                if (frameCount % 30 === 0) {
+                    console.log(`⏰ Cooldown1 decreasing: ${punchCooldown1.toFixed(3)}s remaining`);
+                }
             }
             if (punchCooldown2 > 0) {
                 punchCooldown2 -= deltaTime;
+                if (frameCount % 30 === 0) {
+                    console.log(`⏰ Cooldown2 decreasing: ${punchCooldown2.toFixed(3)}s remaining`);
+                }
             }
 
             // Only update hand data if XR is active
@@ -2545,8 +2551,15 @@
                                 rawVelocity: rawVelocity.toFixed(3),
                                 startupFrames: hand.userData.startupFrames,
                                 cooldown: currentCooldown.toFixed(3),
-                                isReady: hand.userData.isReady
+                                isReady: hand.userData.isReady,
+                                handCenterExists: !!hand.userData.handCenter,
+                                velocityExists: !!hand.userData.velocity
                             });
+                        }
+                        
+                        // EXTRA DEBUG: Log when we have a fist but low velocity
+                        if (hand.userData.isFist && rawVelocity < 2.5 && rawVelocity > 0.1) {
+                            console.log(`⚠️ FIST BUT LOW VELOCITY Hand ${index}: velocity=${rawVelocity.toFixed(3)}, need >2.5`);
                         }
                         
                         // UNIFIED PUNCH DETECTION: Use raw velocity only
@@ -2576,10 +2589,13 @@
                             // Set cooldown
                             if (index === 0) {
                                 punchCooldown1 = PUNCH_COOLDOWN;
+                                console.log(`⏰ Set punchCooldown1 to ${PUNCH_COOLDOWN}s`);
                             } else {
                                 punchCooldown2 = PUNCH_COOLDOWN;
+                                console.log(`⏰ Set punchCooldown2 to ${PUNCH_COOLDOWN}s`);
                             }
                             hand.userData.recentMaxVelocity = 0;
+                            console.log(`🔄 Reset recentMaxVelocity to 0 for hand ${index}`);
                         }
                         
                     } catch (error) {
