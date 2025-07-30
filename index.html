@@ -2392,7 +2392,13 @@
                         const rawVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
                         if (hand.userData.isFist && rawVelocity > 2.5) {
                             console.log('👊 PUNCH DETECTED! Hand:', index, 'Raw velocity:', rawVelocity.toFixed(3));
+                            console.log('📊 Before increment - handInfo.punchCount:', handInfo.punchCount);
+                            console.log('📊 debugInfo reference check:', index === 0 ? 'leftHand' : 'rightHand', debugInfo.leftHand.punchCount, debugInfo.rightHand.punchCount);
+                            
                             handInfo.punchCount++;
+                            
+                            console.log('📊 After increment - handInfo.punchCount:', handInfo.punchCount);
+                            console.log('📊 debugInfo after increment:', debugInfo.leftHand.punchCount, debugInfo.rightHand.punchCount);
                             console.log('🔢 Punch count for hand', index, ':', handInfo.punchCount);
                             
                             // Immediate visual feedback
@@ -2976,7 +2982,7 @@
             window.playerRig = new THREE.Group();
             scene.add(window.playerRig);
             window.playerRig.add(camera);
-            window.playerRig.position.set(0, 0, 3);
+            window.playerRig.position.set(0, 0, 0); // Temporarily set to origin to fix positioning
             camera.position.set(0, 1.6, 0);
             
             // Initialize renderer with Quest 3 120fps optimizations
