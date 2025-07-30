@@ -1,6 +1,6 @@
 # WebXR Boids Interactive
 
-An immersive WebXR experience featuring intelligent boids flocking simulation optimized for **120fps performance** on Meta Quest 3. Experience responsive hand tracking in a clean, performance-focused virtual environment.
+An immersive WebXR experience featuring intelligent boids flocking simulation optimized for **120fps performance** on Meta Quest 3. Experience responsive hand tracking with reliable gesture detection, teleportation, and force punch mechanics in a clean, performance-focused virtual environment.
 
 ## 🎮 Features
 
@@ -13,11 +13,12 @@ An immersive WebXR experience featuring intelligent boids flocking simulation op
 ### Interactive Elements
 
 #### 🚀 Asteroids Space Battle (Sky Level)
-- Classic space combat 30+ meters overhead
-- Triangular spaceships hunting asteroids
+- Classic space combat 30+ meters overhead  
+- Triangular spaceships hunting asteroids at optimized speeds
 - Authentic asteroid splitting mechanics (large → medium → small)
 - 200 twinkling stars creating a beautiful starfield
 - ✨ **Sporadic shooting stars** with particle trails
+- **Recently optimized**: 30% speed reduction for better visibility and tracking
 
 #### Ornamental Fountain System
 - Constantly active voxel fountain (4 voxels/second)
@@ -35,9 +36,12 @@ An immersive WebXR experience featuring intelligent boids flocking simulation op
 
 ### Hand Interaction Mechanics
 - **Grab & Toss**: Pinch to grab boids and toss them with physics
-- **Shake to Create Predators**: Vigorous shaking transforms voxels into hunting predators
+- **Shake to Create Predators**: Vigorous shaking transforms voxels into hunting predators  
 - **Punch Blast**: Make a fist and punch to create force waves that affect boids
+  - *Recently fixed*: Reliable detection with startup stabilization and velocity smoothing
+  - *Debug overlay*: Real-time punch counter and velocity tracking
 - **Teleportation**: Point with right hand for 3 seconds to teleport (perfect for small VR spaces)
+  - *Recently improved*: Enhanced XR reference space handling with player rig system
 
 ## 🛠️ Technical Details
 
@@ -55,6 +59,8 @@ An immersive WebXR experience featuring intelligent boids flocking simulation op
 - **Frustum culling**: Skip updates for off-screen objects
 - **Simplified materials**: MeshBasicMaterial only for maximum shader performance
 - **Foveated rendering**: Quest 3 specific optimizations with reduced resolution scaling
+- **Hand tracking stabilization**: Velocity smoothing and startup grace periods prevent false positives
+- **VR debug overlay**: Large, comprehensive debug panel for in-VR troubleshooting
 
 ### Browser Compatibility
 - **Primary**: Meta Quest 3 native browser
@@ -94,10 +100,10 @@ Visit: `https://benlaken.github.io/webxr_arcade/`
 ## 🎯 Controls
 
 ### Hand Gestures
-- **Pinch**: Grab boids or fountain voxels
-- **Fist**: Create punch force blasts
-- **Point**: Hold for 3 seconds to teleport
-- **Shake**: Transform held voxels into predators
+- **Pinch**: Grab boids or fountain voxels (thumb and index finger close)
+- **Fist**: Create punch force blasts (2 of 3 fingers curled, with fast movement)
+- **Point**: Hold for 3 seconds to teleport (index extended, others curled)
+- **Shake**: Transform held voxels into predators (vigorous hand movement while holding)
 
 ### Desktop Fallback
 - **Mouse**: Look around
@@ -112,11 +118,31 @@ The experience embraces clean, performance-focused aesthetics:
 - **Minimalist Design**: Focused on core interactive elements
 - **Dark Environment**: Space-like atmosphere with selective lighting
 
+## 🆕 Recent Improvements
+
+### Hand Tracking Reliability  
+- **Startup stabilization**: 60-frame grace period prevents false punch detection on app load
+- **Velocity smoothing**: Lerp-based position smoothing handles tracking loss gracefully
+- **Improved fist detection**: 2-of-3 finger algorithm with optimized thresholds
+- **Player rig system**: Proper VR coordinate handling for teleportation
+
+### Performance & Visibility
+- **Space battle optimization**: 30% speed reduction for asteroids and spaceships
+- **Debug overlay expansion**: Larger debug panel (800x600) fits all information
+- **Enhanced logging**: Comprehensive console output for troubleshooting
+
+### Bug Fixes
+- **Punch detection**: Eliminated startup auto-activation and cooldown conflicts  
+- **Web worker cleanup**: Removed incomplete async code causing crashes
+- **Reference space handling**: Fixed head/hand separation during teleportation
+
 ## 🔧 Customization
 
 Key parameters can be adjusted in the code:
 - `initialBoidCount`: Number of boids (default: 25)
-- `ASTEROID_COUNT`: Space battle density
+- `ASTEROID_COUNT`: Space battle density (default: 6)
+- `ASTEROID_SPEED`: Asteroid movement speed (default: 17.5, recently reduced 30%)
+- `SPACESHIP_SPEED`: Spaceship movement speed (default: 5.6, recently reduced 30%)
 - `SHOOTING_STAR_SPAWN_RATE`: Meteor frequency
 - `fountainSpawnRate`: Fountain voxel generation rate
 - `TARGET_FRAME_RATE`: Performance target (default: 120fps)
