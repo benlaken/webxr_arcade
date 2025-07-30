@@ -886,19 +886,32 @@
                 flashMesh.position.copy(explosionPos);
                 scene.add(flashMesh);
                 
-                // Animate flash decay
-                let flashLife = 0.5;
-                const animateFlash = () => {
-                    flashLife -= 0.016; // ~60fps decay
-                    if (flashLife > 0) {
-                        const scale = flashLife * 2; // Expand as it fades
-                        flashMesh.scale.setScalar(scale);
-                        flashMaterial.opacity = Math.max(0, flashLife * 1.6);
-                        requestAnimationFrame(animateFlash);
-                    } else {
+                // Cleanup function
+                const cleanupFlash = () => {
+                    if (flashMesh.parent) { // Only cleanup if still in scene
                         scene.remove(flashMesh);
                         flashGeometry.dispose();
                         flashMaterial.dispose();
+                        console.log('🧹 Ground explosion flash cleaned up');
+                    }
+                };
+                
+                // Timeout-based cleanup as failsafe (always runs)
+                setTimeout(cleanupFlash, 600); // 0.6 seconds max
+                
+                // Animate flash decay (if this fails, timeout will still cleanup)
+                let flashLife = 0.5;
+                let animationId = null;
+                const animateFlash = () => {
+                    flashLife -= 0.016; // ~60fps decay
+                    if (flashLife > 0 && flashMesh.parent) { // Check if still in scene
+                        const scale = flashLife * 2; // Expand as it fades
+                        flashMesh.scale.setScalar(scale);
+                        flashMaterial.opacity = Math.max(0, flashLife * 1.6);
+                        animationId = requestAnimationFrame(animateFlash);
+                    } else {
+                        if (animationId) cancelAnimationFrame(animationId);
+                        cleanupFlash();
                     }
                 };
                 animateFlash();
