@@ -1554,6 +1554,11 @@
         
         function handleTeleportation(hand, elapsedTime) {
             try {
+                // Debug teleportation prerequisites
+                if (frameCount % 120 === 0) {
+                    console.log(`🚀 TELEPORT CHECK: isReady=${hand.userData.isReady}, isPointing=${hand.userData.isPointing}`);
+                }
+                
                 if (!hand.userData.isReady || !hand.userData.isPointing) {
                     resetTeleportState();
                     return;
@@ -1688,7 +1693,7 @@
                             console.warn('⚠️ Could not get current viewer pose for teleport');
                         }
                         
-                        console.log('✅ XR Teleport completed to:', teleportVector.toArray().map(v => v.toFixed(2)));
+                        console.log('✅ XR Teleport completed to:', targetPosition.toArray().map(v => v.toFixed(2)));
                     } else {
                         // Fallback: Move the VR camera group
                         const vrCamera = renderer.xr.getCamera();
@@ -2460,6 +2465,11 @@
                     const indexExtended = indexToWrist > 0.15;
                     const othersRetracted = thumbToWrist < 0.12 && middleToWrist < 0.12;
                     hand.userData.isPointing = indexExtended && othersRetracted;
+                    
+                    // Debug pointing detection
+                    if (frameCount % 60 === 0) {
+                        console.log(`👉 POINTING CHECK: index=${indexToWrist.toFixed(3)}(need >0.15), thumb=${thumbToWrist.toFixed(3)}(<0.12), middle=${middleToWrist.toFixed(3)}(<0.12), isPointing=${hand.userData.isPointing}`);
+                    }
                 }
                 
             } catch (error) {
