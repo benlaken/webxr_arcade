@@ -209,8 +209,8 @@
         const ORBITAL_RADIUS = 120; // Much larger area for asteroids and ships
         const ASTEROID_COUNT = 6;
         const SPACESHIP_COUNT = 1;
-        const ASTEROID_SPEED = 25.0; // Much higher speed for dramatic movement
-        const SPACESHIP_SPEED = 8.0; // Reduced by 50% for better control
+        const ASTEROID_SPEED = 17.5; // Reduced by 30% for better visibility
+        const SPACESHIP_SPEED = 5.6; // Reduced by 30% for better control
         const SPACE_BULLET_SPEED = 35.0; // Much faster than spaceship (8.0 max speed)
         
         // Layer 3: Space (60m+ above user) - Distant starfield
@@ -334,8 +334,8 @@
                 const oldPosition = this.position.clone();
                 
                 // FORCE CONSTANT MOVEMENT - bypass all other logic for testing
-                this.position.x += 0.2; // Move 0.2 units per frame regardless of deltaTime
-                this.position.z += 0.1; // Move diagonally for visibility
+                this.position.x += 0.14; // Move 0.14 units per frame (reduced by 30%)
+                this.position.z += 0.07; // Move diagonally for visibility (reduced by 30%)
                 
                 // Debug minimal logging
                 if (Math.random() < 0.05) {
