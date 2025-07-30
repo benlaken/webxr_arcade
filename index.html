@@ -2024,8 +2024,21 @@
             }
         }
         
-        // Track active beams for cleanup
+        // Track active beams for cleanup and main loop updates
         const activeBeams = [];
+        
+        // Update all active beams in main loop (called from main update function)
+        function updateActiveBeams(deltaTime) {
+            for (let i = activeBeams.length - 1; i >= 0; i--) {
+                const beam = activeBeams[i];
+                if (beam.update) {
+                    const shouldRemove = beam.update(deltaTime);
+                    if (shouldRemove) {
+                        beam.cleanup();
+                    }
+                }
+            }
+        }
         
         function createForceBeam(origin, direction) {
             try {
@@ -2056,18 +2069,66 @@
                 let isActive = true;
                 let animationId = null;
                 
-                // Create beam object for tracking
+                // Create beam object for main loop updates (NO requestAnimationFrame)
                 const beamData = {
                     mesh: beamMesh,
                     geometry: beamGeometry,
                     material: beamMaterial,
-                    isActive: () => isActive,
+                    direction: direction.clone(),
+                    travelDistance: 0,
+                    startTime: startTime,
+                    isActive: true,
+                    
+                    // Update method called from main loop
+                    update: (deltaTime) => {
+                        if (!beamData.isActive) return true; // Mark for removal
+                        
+                        // Check elapsed time for safety
+                        const elapsedTime = clock.getElapsedTime() - beamData.startTime;
+                        if (elapsedTime > 2.0) {
+                            console.log('⏰ Force beam timed out');
+                            return true; // Mark for removal
+                        }
+                        
+                        // Move beam forward using main loop deltaTime
+                        const moveDistance = beamSpeed * deltaTime;
+                        beamData.travelDistance += moveDistance;
+                        
+                        if (beamData.travelDistance < beamRange) {
+                            // Move beam forward
+                            const movement = beamData.direction.clone().multiplyScalar(moveDistance);
+                            beamMesh.position.add(movement);
+                            
+                            // Check for boid hits
+                            boids.forEach(boid => {
+                                if (boid && boid.position && beamData.isActive) {
+                                    const distanceToBeam = boid.position.distanceTo(beamMesh.position);
+                                    if (distanceToBeam < beamRadius) {
+                                        // Apply force in beam direction
+                                        const forceDirection = beamData.direction.clone();
+                                        const forceMagnitude = Math.max(0.5, (beamRadius - distanceToBeam) / beamRadius * 3.0);
+                                        boid.velocity.add(forceDirection.multiplyScalar(forceMagnitude));
+                                        
+                                        // Visual hit effect
+                                        createHitSpark(boid.position.clone());
+                                        console.log('⚡ Force beam hit boid!');
+                                    }
+                                }
+                            });
+                            
+                            return false; // Keep beam active
+                        } else {
+                            // Beam reached max range
+                            const impactPoint = origin.clone().add(beamData.direction.clone().multiplyScalar(beamRange));
+                            createBeamImpact(impactPoint);
+                            console.log('🎯 Force beam reached max range');
+                            return true; // Mark for removal
+                        }
+                    },
+                    
                     cleanup: () => {
-                        if (isActive) {
-                            isActive = false;
-                            if (animationId) {
-                                cancelAnimationFrame(animationId);
-                            }
+                        if (beamData.isActive) {
+                            beamData.isActive = false;
                             scene.remove(beamMesh);
                             beamGeometry.dispose();
                             beamMaterial.dispose();
@@ -2079,68 +2140,11 @@
                     }
                 };
                 
-                // Add to active beams for tracking
+                // Add to active beams for main loop updates
                 activeBeams.push(beamData);
                 
                 // Create muzzle flash at origin
                 createMuzzleFlash(origin);
-                
-                // Timeout-based cleanup as failsafe (2 seconds max)
-                setTimeout(() => {
-                    beamData.cleanup();
-                }, 2000);
-                
-                // Animate beam movement
-                const animateBeam = () => {
-                    if (!isActive) return; // Exit if beam was cleaned up
-                    
-                    // Check elapsed time for additional safety
-                    const elapsedTime = clock.getElapsedTime() - startTime;
-                    if (elapsedTime > 2.0) {
-                        beamData.cleanup();
-                        return;
-                    }
-                    
-                    let deltaTime = clock.getDelta();
-                    // Fix deltaTime issues for beam movement
-                    if (deltaTime < 0.008) deltaTime = 0.008; // Min ~120fps
-                    if (deltaTime > 0.033) deltaTime = 0.016; // Max ~60fps
-                    const moveDistance = beamSpeed * deltaTime;
-                    travelDistance += moveDistance;
-                    
-                    if (travelDistance < beamRange && isActive) {
-                        // Move beam forward
-                        const movement = direction.clone().multiplyScalar(moveDistance);
-                        beamMesh.position.add(movement);
-                        
-                        // Check for boid hits along the beam path
-                        boids.forEach(boid => {
-                            if (boid && boid.position && isActive) {
-                                const distanceToBeam = boid.position.distanceTo(beamMesh.position);
-                                if (distanceToBeam < beamRadius) {
-                                    // Apply force in beam direction
-                                    const forceDirection = direction.clone();
-                                    const forceMagnitude = Math.max(0.5, (beamRadius - distanceToBeam) / beamRadius * 3.0);
-                                    boid.velocity.add(forceDirection.multiplyScalar(forceMagnitude));
-                                    
-                                    // Visual hit effect
-                                    createHitSpark(boid.position.clone());
-                                    console.log('⚡ Force beam hit boid!');
-                                }
-                            }
-                        });
-                        
-                        animationId = requestAnimationFrame(animateBeam);
-                    } else {
-                        // Beam reached max range or was deactivated
-                        if (isActive) {
-                            const impactPoint = origin.clone().add(direction.clone().multiplyScalar(beamRange));
-                            createBeamImpact(impactPoint);
-                        }
-                        beamData.cleanup();
-                    }
-                };
-                animateBeam();
                 
             } catch (error) {
                 console.warn('Force beam error:', error);
@@ -2180,13 +2184,13 @@
             };
             
             // Timeout-based cleanup as failsafe (always runs)
-            setTimeout(cleanupFlash, 300); // 0.3 seconds max (faster than before)
+            setTimeout(cleanupFlash, 150); // 0.15 seconds max (much faster)
             
             // Quick flash animation (if this fails, timeout will still cleanup)
             let opacity = 1.0;
             let animationId = null;
             const fadeFlash = () => {
-                opacity -= 0.1; // Fade out over ~10 frames
+                opacity -= 0.2; // Fade out over ~5 frames (much faster)
                 if (opacity > 0 && flashMesh.parent) { // Check if still in scene
                     flashMaterial.opacity = opacity;
                     animationId = requestAnimationFrame(fadeFlash);
@@ -2711,18 +2715,43 @@
                 handleGrabbing(hand1, heldVoxelMesh1);
                 handleGrabbing(hand2, heldVoxelMesh2);
                 
-                // Update held voxel positions to follow hands
-                if (hand1.userData.heldVoxelIndex !== null || hand1.userData.heldBoidIndex !== null) {
-                    if (hand1.userData.handCenter && heldVoxelMesh1.visible) {
-                        heldVoxelMesh1.position.copy(hand1.userData.handCenter);
-                        heldVoxelMesh1.position.add(new THREE.Vector3(0, 0.05, 0)); // Slight offset above hand
+                // Update held voxel positions to follow hands - with crash protection
+                try {
+                    if (hand1.userData.heldVoxelIndex !== null || hand1.userData.heldBoidIndex !== null) {
+                        if (hand1.userData.handCenter && hand1.userData.handCenter.isVector3 && 
+                            heldVoxelMesh1 && heldVoxelMesh1.visible && heldVoxelMesh1.position) {
+                            heldVoxelMesh1.position.copy(hand1.userData.handCenter);
+                            heldVoxelMesh1.position.add(new THREE.Vector3(0, 0.05, 0));
+                        }
                     }
+                } catch (error) {
+                    console.error('Hand1 voxel position update crash:', error);
+                    // Emergency cleanup
+                    if (heldVoxelMesh1) {
+                        heldVoxelMesh1.visible = false;
+                        heldVoxelMesh1.position.set(0, -1000, 0);
+                    }
+                    hand1.userData.heldVoxelIndex = null;
+                    hand1.userData.heldBoidIndex = null;
                 }
-                if (hand2.userData.heldVoxelIndex !== null || hand2.userData.heldBoidIndex !== null) {
-                    if (hand2.userData.handCenter && heldVoxelMesh2.visible) {
-                        heldVoxelMesh2.position.copy(hand2.userData.handCenter);
-                        heldVoxelMesh2.position.add(new THREE.Vector3(0, 0.05, 0)); // Slight offset above hand
+                
+                try {
+                    if (hand2.userData.heldVoxelIndex !== null || hand2.userData.heldBoidIndex !== null) {
+                        if (hand2.userData.handCenter && hand2.userData.handCenter.isVector3 && 
+                            heldVoxelMesh2 && heldVoxelMesh2.visible && heldVoxelMesh2.position) {
+                            heldVoxelMesh2.position.copy(hand2.userData.handCenter);
+                            heldVoxelMesh2.position.add(new THREE.Vector3(0, 0.05, 0));
+                        }
                     }
+                } catch (error) {
+                    console.error('Hand2 voxel position update crash:', error);
+                    // Emergency cleanup
+                    if (heldVoxelMesh2) {
+                        heldVoxelMesh2.visible = false;
+                        heldVoxelMesh2.position.set(0, -1000, 0);
+                    }
+                    hand2.userData.heldVoxelIndex = null;
+                    hand2.userData.heldBoidIndex = null;
                 }
                 
                 // Game of Life touch interaction removed for performance
@@ -2909,6 +2938,9 @@
                 updateSkyBattle(deltaTime, elapsedTime);
                 updateQueues.skyBattle = (updateQueues.skyBattle + 2) % TEMPORAL_SPREAD_FRAMES;
             }
+            
+            // Update active force beams every frame for smooth movement
+            updateActiveBeams(deltaTime);
             
             // Fountain mesh update removed - system eliminated
             
