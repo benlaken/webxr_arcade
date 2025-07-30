@@ -1913,6 +1913,162 @@
             }
         }
         
+        function createForceBeam(origin, direction) {
+            try {
+                console.log('🌟 Creating force beam from:', origin.toArray().map(v => v.toFixed(2)), 'direction:', direction.toArray().map(v => v.toFixed(2)));
+                
+                // Create beam projectile
+                const beamGeometry = new THREE.CylinderGeometry(0.05, 0.15, 2.0, 8);
+                const beamMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.8,
+                    emissive: 0x0088ff
+                });
+                const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
+                
+                // Position and orient the beam
+                beamMesh.position.copy(origin);
+                beamMesh.lookAt(origin.clone().add(direction));
+                beamMesh.rotateX(Math.PI / 2); // Align cylinder with direction
+                scene.add(beamMesh);
+                
+                // Beam travel parameters
+                const beamSpeed = 15.0; // Units per second
+                const beamRange = 20.0; // Maximum travel distance
+                const beamRadius = 1.5; // Effect radius
+                let travelDistance = 0;
+                const startTime = clock.getElapsedTime();
+                
+                // Create muzzle flash at origin
+                createMuzzleFlash(origin);
+                
+                // Animate beam movement
+                const animateBeam = () => {
+                    const deltaTime = clock.getDelta();
+                    const moveDistance = beamSpeed * deltaTime;
+                    travelDistance += moveDistance;
+                    
+                    if (travelDistance < beamRange) {
+                        // Move beam forward
+                        const movement = direction.clone().multiplyScalar(moveDistance);
+                        beamMesh.position.add(movement);
+                        
+                        // Check for boid hits along the beam path
+                        boids.forEach(boid => {
+                            if (boid && boid.position) {
+                                const distanceToBeam = boid.position.distanceTo(beamMesh.position);
+                                if (distanceToBeam < beamRadius) {
+                                    // Apply force in beam direction
+                                    const forceDirection = direction.clone();
+                                    const forceMagnitude = Math.max(0.5, (beamRadius - distanceToBeam) / beamRadius * 3.0);
+                                    boid.velocity.add(forceDirection.multiplyScalar(forceMagnitude));
+                                    
+                                    // Visual hit effect
+                                    createHitSpark(boid.position.clone());
+                                    console.log('⚡ Force beam hit boid!');
+                                }
+                            }
+                        });
+                        
+                        requestAnimationFrame(animateBeam);
+                    } else {
+                        // Beam reached max range - create impact effect
+                        const impactPoint = origin.clone().add(direction.clone().multiplyScalar(beamRange));
+                        createBeamImpact(impactPoint);
+                        
+                        // Remove beam
+                        scene.remove(beamMesh);
+                        beamGeometry.dispose();
+                        beamMaterial.dispose();
+                    }
+                };
+                animateBeam();
+                
+            } catch (error) {
+                console.warn('Force beam error:', error);
+            }
+        }
+        
+        function createMuzzleFlash(position) {
+            const flashGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const flashMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 1.0,
+                emissive: 0xffffff
+            });
+            const flashMesh = new THREE.Mesh(flashGeometry, flashMaterial);
+            flashMesh.position.copy(position);
+            scene.add(flashMesh);
+            
+            // Quick flash animation
+            let opacity = 1.0;
+            const fadeFlash = () => {
+                opacity -= 0.1;
+                if (opacity > 0) {
+                    flashMaterial.opacity = opacity;
+                    requestAnimationFrame(fadeFlash);
+                } else {
+                    scene.remove(flashMesh);
+                    flashGeometry.dispose();
+                    flashMaterial.dispose();
+                }
+            };
+            fadeFlash();
+        }
+        
+        function createHitSpark(position) {
+            const sparkCount = 5;
+            for (let i = 0; i < sparkCount; i++) {
+                const particle = getParticleFromPool();
+                if (particle) {
+                    particle.position.copy(position);
+                    particle.velocity.set(
+                        (Math.random() - 0.5) * 1.5,
+                        (Math.random() - 0.5) * 1.5,
+                        (Math.random() - 0.5) * 1.5
+                    );
+                    particle.life = 0.3;
+                    particle.maxLife = 0.3;
+                    particle.color = new THREE.Color(0xffff00);
+                    particles.push(particle);
+                }
+            }
+        }
+        
+        function createBeamImpact(position) {
+            // Create impact explosion at beam end
+            const impactGeometry = new THREE.SphereGeometry(0.8, 12, 12);
+            const impactMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.6,
+                emissive: 0x0066cc
+            });
+            const impactMesh = new THREE.Mesh(impactGeometry, impactMaterial);
+            impactMesh.position.copy(position);
+            scene.add(impactMesh);
+            
+            // Expand and fade
+            let scale = 1.0;
+            let opacity = 0.6;
+            const animateImpact = () => {
+                scale += 0.1;
+                opacity -= 0.05;
+                if (opacity > 0) {
+                    impactMesh.scale.set(scale, scale, scale);
+                    impactMaterial.opacity = opacity;
+                    requestAnimationFrame(animateImpact);
+                } else {
+                    scene.remove(impactMesh);
+                    impactGeometry.dispose();
+                    impactMaterial.dispose();
+                }
+            };
+            animateImpact();
+        }
+
         function createShockwaveRing(center, delay) {
             const ringGeometry = new THREE.RingGeometry(0.1, 0.2, 16);
             const ringMaterial = new THREE.MeshBasicMaterial({
@@ -2401,26 +2557,11 @@
                             console.log('📊 debugInfo after increment:', debugInfo.leftHand.punchCount, debugInfo.rightHand.punchCount);
                             console.log('🔢 Punch count for hand', index, ':', handInfo.punchCount);
                             
-                            // Immediate visual feedback
-                            createParticleExplosion(hand.userData.handCenter.clone());
+                            // Create directional force beam effect
+                            createForceBeam(hand.userData.handCenter.clone(), hand.userData.velocity.clone().normalize());
                             
-                            // Create blast effect
-                            createPunchBlastEffect(hand.userData.handCenter, hand.userData.velocity.clone().normalize());
-                            
-                            // Affect nearby boids
-                            let affectedCount = 0;
-                            boids.forEach(boid => {
-                                if (boid && boid.position) {
-                                    const distance = hand.userData.handCenter.distanceTo(boid.position);
-                                    if (distance < 3.0) {
-                                        const pushDirection = new THREE.Vector3().subVectors(boid.position, hand.userData.handCenter).normalize();
-                                        boid.velocity.add(pushDirection.multiplyScalar(2.0));
-                                        affectedCount++;
-                                    }
-                                }
-                            });
-                            
-                            console.log(`💥 Punch affected ${affectedCount} boids!`);
+                            // Note: Boid interactions now handled by the traveling beam
+                            console.log(`🌟 Force beam launched from hand!`);
                             
                             // Set cooldown
                             if (index === 0) {
