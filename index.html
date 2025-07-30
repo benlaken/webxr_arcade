@@ -2574,7 +2574,7 @@
                         
                         handInfo.isFist = hand.userData.isFist;
                         handInfo.velocity = rawVelocity; // Use raw velocity instead of broken punchVelocity
-                        handInfo.cooldown = currentCooldown;
+                        handInfo.cooldown = index === 0 ? punchCooldown1 : punchCooldown2; // Use actual cooldown variable
                         handInfo.isReady = hand.userData.isReady;
                         
                         // AGGRESSIVE DEBUG: Log every frame when conditions are close
