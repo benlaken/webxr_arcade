@@ -1944,6 +1944,9 @@
             }
         }
         
+        // Track active beams for cleanup
+        const activeBeams = [];
+        
         function createForceBeam(origin, direction) {
             try {
                 console.log('🌟 Creating force beam from:', origin.toArray().map(v => v.toFixed(2)), 'direction:', direction.toArray().map(v => v.toFixed(2)));
@@ -1970,12 +1973,54 @@
                 const beamRadius = 1.5; // Effect radius
                 let travelDistance = 0;
                 const startTime = clock.getElapsedTime();
+                let isActive = true;
+                let animationId = null;
+                
+                // Create beam object for tracking
+                const beamData = {
+                    mesh: beamMesh,
+                    geometry: beamGeometry,
+                    material: beamMaterial,
+                    isActive: () => isActive,
+                    cleanup: () => {
+                        if (isActive) {
+                            isActive = false;
+                            if (animationId) {
+                                cancelAnimationFrame(animationId);
+                            }
+                            scene.remove(beamMesh);
+                            beamGeometry.dispose();
+                            beamMaterial.dispose();
+                            // Remove from active beams
+                            const index = activeBeams.indexOf(beamData);
+                            if (index > -1) activeBeams.splice(index, 1);
+                            console.log('🗑️ Force beam cleaned up');
+                        }
+                    }
+                };
+                
+                // Add to active beams for tracking
+                activeBeams.push(beamData);
                 
                 // Create muzzle flash at origin
                 createMuzzleFlash(origin);
                 
+                // Timeout-based cleanup as failsafe (2 seconds max)
+                setTimeout(() => {
+                    beamData.cleanup();
+                }, 2000);
+                
                 // Animate beam movement
                 const animateBeam = () => {
+                    if (!isActive) return; // Exit if beam was cleaned up
+                    
+                    // Check elapsed time for additional safety
+                    const elapsedTime = clock.getElapsedTime() - startTime;
+                    if (elapsedTime > 2.0) {
+                        beamData.cleanup();
+                        return;
+                    }
+                    
                     let deltaTime = clock.getDelta();
                     // Fix deltaTime issues for beam movement
                     if (deltaTime < 0.008) deltaTime = 0.008; // Min ~120fps
@@ -1983,14 +2028,14 @@
                     const moveDistance = beamSpeed * deltaTime;
                     travelDistance += moveDistance;
                     
-                    if (travelDistance < beamRange) {
+                    if (travelDistance < beamRange && isActive) {
                         // Move beam forward
                         const movement = direction.clone().multiplyScalar(moveDistance);
                         beamMesh.position.add(movement);
                         
                         // Check for boid hits along the beam path
                         boids.forEach(boid => {
-                            if (boid && boid.position) {
+                            if (boid && boid.position && isActive) {
                                 const distanceToBeam = boid.position.distanceTo(beamMesh.position);
                                 if (distanceToBeam < beamRadius) {
                                     // Apply force in beam direction
@@ -2005,22 +2050,28 @@
                             }
                         });
                         
-                        requestAnimationFrame(animateBeam);
+                        animationId = requestAnimationFrame(animateBeam);
                     } else {
-                        // Beam reached max range - create impact effect
-                        const impactPoint = origin.clone().add(direction.clone().multiplyScalar(beamRange));
-                        createBeamImpact(impactPoint);
-                        
-                        // Remove beam
-                        scene.remove(beamMesh);
-                        beamGeometry.dispose();
-                        beamMaterial.dispose();
+                        // Beam reached max range or was deactivated
+                        if (isActive) {
+                            const impactPoint = origin.clone().add(direction.clone().multiplyScalar(beamRange));
+                            createBeamImpact(impactPoint);
+                        }
+                        beamData.cleanup();
                     }
                 };
                 animateBeam();
                 
             } catch (error) {
                 console.warn('Force beam error:', error);
+            }
+        }
+        
+        // Cleanup function for all active beams (call when needed)
+        function cleanupAllBeams() {
+            console.log(`🧹 Cleaning up ${activeBeams.length} active beams`);
+            while (activeBeams.length > 0) {
+                activeBeams[0].cleanup();
             }
         }
         
