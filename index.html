@@ -2520,12 +2520,20 @@
             // Update punch cooldowns
             if (punchCooldown1 > 0) {
                 punchCooldown1 -= deltaTime;
+                if (punchCooldown1 <= 0) {
+                    punchCooldown1 = 0;
+                    console.log(`✅ Cooldown1 reset to 0`);
+                }
                 if (frameCount % 30 === 0) {
                     console.log(`⏰ Cooldown1 decreasing: ${punchCooldown1.toFixed(3)}s remaining`);
                 }
             }
             if (punchCooldown2 > 0) {
                 punchCooldown2 -= deltaTime;
+                if (punchCooldown2 <= 0) {
+                    punchCooldown2 = 0;
+                    console.log(`✅ Cooldown2 reset to 0`);
+                }
                 if (frameCount % 30 === 0) {
                     console.log(`⏰ Cooldown2 decreasing: ${punchCooldown2.toFixed(3)}s remaining`);
                 }
