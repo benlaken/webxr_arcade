@@ -2370,10 +2370,38 @@
                         handInfo.cooldown = currentCooldown;
                         handInfo.isReady = hand.userData.isReady;
                         
+                        // AGGRESSIVE DEBUG: Log every frame when conditions are close
+                        if (frameCount % 10 === 0) {
+                            console.log(`🔍 DETAILED CHECK Hand ${index}:`, {
+                                isFist: hand.userData.isFist,
+                                velocity: hand.userData.punchVelocity?.toFixed(3) || 'undefined',
+                                recentMax: hand.userData.recentMaxVelocity?.toFixed(3) || 'undefined',
+                                rawVel: hand.userData.velocity?.length()?.toFixed(3) || 'undefined',
+                                startupFrames: hand.userData.startupFrames,
+                                cooldown: currentCooldown.toFixed(3),
+                                isReady: hand.userData.isReady
+                            });
+                        }
+                        
                         // Simple punch detection: fist + fast movement  
-                        // Add debug logging for punch conditions
                         if (frameCount % 30 === 0 && hand.userData.isFist) {
                             console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, Velocity=${hand.userData.punchVelocity.toFixed(3)}, Will punch=${hand.userData.punchVelocity > 1.5}`);
+                        }
+                        
+                        // EMERGENCY FALLBACK: Simple direct detection for testing
+                        const rawVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
+                        if (hand.userData.isFist && rawVelocity > 2.5) {
+                            console.log('🚨 EMERGENCY PUNCH DETECTED! Hand:', index, 'Raw velocity:', rawVelocity.toFixed(3));
+                            handInfo.punchCount++;
+                            console.log('🔢 Emergency punch count:', handInfo.punchCount);
+                            
+                            // Set cooldown
+                            if (index === 0) {
+                                punchCooldown1 = PUNCH_COOLDOWN;
+                            } else {
+                                punchCooldown2 = PUNCH_COOLDOWN;
+                            }
+                            hand.userData.recentMaxVelocity = 0;
                         }
                         
                         if (hand.userData.isFist && hand.userData.punchVelocity > 1.5) {
