@@ -803,6 +803,15 @@
                     this.mesh.rotation.z += 0.1;
                 }
                 
+                // Check collision with ground (y=0 level)
+                if (this.position.y <= 0.1) {
+                    console.log(`💥 TORPEDO HIT GROUND! At position (${this.position.x.toFixed(1)}, ${this.position.y.toFixed(1)}, ${this.position.z.toFixed(1)})`);
+                    // Create ground explosion effect
+                    this.createGroundExplosion();
+                    this.destroy();
+                    return true; // Mark for removal
+                }
+                
                 // Check collision with asteroids - Enhanced hit detection
                 for (const asteroid of asteroids) {
                     const distance = this.position.distanceTo(asteroid.position);
@@ -835,6 +844,64 @@
                 // Create small explosion effect
                 createSpaceExplosion(this.position.clone());
                 this.destroy();
+            }
+            
+            createGroundExplosion() {
+                // Create a ground-appropriate explosion with style matching the experience
+                const explosionPos = this.position.clone();
+                explosionPos.y = 0.05; // Slightly above ground
+                
+                console.log('🔥 Creating ground explosion at:', explosionPos.toArray().map(v => v.toFixed(2)));
+                
+                // Create expanding ring of cyan particles (matching force beam style)
+                const particleCount = 12; // Moderate count for performance
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = getParticleFromPool();
+                    if (particle) {
+                        const angle = (i / particleCount) * Math.PI * 2;
+                        const radius = 0.8; // Initial expansion radius
+                        
+                        particle.position.copy(explosionPos);
+                        particle.velocity.set(
+                            Math.cos(angle) * radius,
+                            Math.random() * 0.6 + 0.2, // Upward scatter with variation
+                            Math.sin(angle) * radius
+                        );
+                        particle.life = 1.2; // Longer life for visible effect
+                        particle.maxLife = 1.2;
+                        particle.color = new THREE.Color(0x00ffff); // Cyan to match theme
+                        particles.push(particle);
+                    }
+                }
+                
+                // Create central flash/impact effect
+                const flashGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+                const flashMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.8,
+                    emissive: 0x0088ff
+                });
+                const flashMesh = new THREE.Mesh(flashGeometry, flashMaterial);
+                flashMesh.position.copy(explosionPos);
+                scene.add(flashMesh);
+                
+                // Animate flash decay
+                let flashLife = 0.5;
+                const animateFlash = () => {
+                    flashLife -= 0.016; // ~60fps decay
+                    if (flashLife > 0) {
+                        const scale = flashLife * 2; // Expand as it fades
+                        flashMesh.scale.setScalar(scale);
+                        flashMaterial.opacity = Math.max(0, flashLife * 1.6);
+                        requestAnimationFrame(animateFlash);
+                    } else {
+                        scene.remove(flashMesh);
+                        flashGeometry.dispose();
+                        flashMaterial.dispose();
+                    }
+                };
+                animateFlash();
             }
             
             destroy() {
