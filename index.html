@@ -2363,10 +2363,12 @@
                             return;
                         }
                         
-                        // Update debug info
+                        // Update debug info - calculate raw velocity once
                         const handInfo = index === 0 ? debugInfo.leftHand : debugInfo.rightHand;
+                        const rawVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
+                        
                         handInfo.isFist = hand.userData.isFist;
-                        handInfo.velocity = hand.userData.punchVelocity;
+                        handInfo.velocity = rawVelocity; // Use raw velocity instead of broken punchVelocity
                         handInfo.cooldown = currentCooldown;
                         handInfo.isReady = hand.userData.isReady;
                         
@@ -2374,22 +2376,20 @@
                         if (frameCount % 10 === 0) {
                             console.log(`🔍 DETAILED CHECK Hand ${index}:`, {
                                 isFist: hand.userData.isFist,
-                                velocity: hand.userData.punchVelocity?.toFixed(3) || 'undefined',
-                                recentMax: hand.userData.recentMaxVelocity?.toFixed(3) || 'undefined',
-                                rawVel: hand.userData.velocity?.length()?.toFixed(3) || 'undefined',
+                                rawVelocity: rawVelocity.toFixed(3),
                                 startupFrames: hand.userData.startupFrames,
                                 cooldown: currentCooldown.toFixed(3),
                                 isReady: hand.userData.isReady
                             });
                         }
                         
-                        // Simple punch detection: fist + fast movement  
+                        // UNIFIED PUNCH DETECTION: Use raw velocity only
+                        
+                        // Debug logging every 30 frames when fist is detected
                         if (frameCount % 30 === 0 && hand.userData.isFist) {
-                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, Velocity=${hand.userData.punchVelocity.toFixed(3)}, Will punch=${hand.userData.punchVelocity > 1.5}`);
+                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, RawVelocity=${rawVelocity.toFixed(3)}, Will punch=${rawVelocity > 2.5}`);
                         }
                         
-                        // SIMPLIFIED WORKING DETECTION: Use raw velocity only
-                        const rawVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
                         if (hand.userData.isFist && rawVelocity > 2.5) {
                             console.log('👊 PUNCH DETECTED! Hand:', index, 'Raw velocity:', rawVelocity.toFixed(3));
                             console.log('📊 Before increment - handInfo.punchCount:', handInfo.punchCount);
@@ -2891,7 +2891,7 @@
             y += 20;
             ctx.fillText(`  Fist: ${debugInfo.leftHand.isFist ? 'YES' : 'NO'}`, 10, y);
             y += 20;
-            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >1.5)`, 10, y);
+            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >2.5)`, 10, y);
             y += 20;
             ctx.fillText(`  Punches: ${debugInfo.leftHand.punchCount}`, 10, y);
             y += 20;
@@ -2910,7 +2910,7 @@
             y += 20;
             ctx.fillText(`  Fist: ${debugInfo.rightHand.isFist ? 'YES' : 'NO'}`, 10, y);
             y += 20;
-            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >1.5)`, 10, y);
+            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >2.5)`, 10, y);
             y += 20;
             ctx.fillText(`  Punches: ${debugInfo.rightHand.punchCount}`, 10, y);
             y += 20;
