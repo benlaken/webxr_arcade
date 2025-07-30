@@ -2388,28 +2388,12 @@
                             console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, Velocity=${hand.userData.punchVelocity.toFixed(3)}, Will punch=${hand.userData.punchVelocity > 1.5}`);
                         }
                         
-                        // EMERGENCY FALLBACK: Simple direct detection for testing
+                        // SIMPLIFIED WORKING DETECTION: Use raw velocity only
                         const rawVelocity = hand.userData.velocity ? hand.userData.velocity.length() : 0;
                         if (hand.userData.isFist && rawVelocity > 2.5) {
-                            console.log('🚨 EMERGENCY PUNCH DETECTED! Hand:', index, 'Raw velocity:', rawVelocity.toFixed(3));
+                            console.log('👊 PUNCH DETECTED! Hand:', index, 'Raw velocity:', rawVelocity.toFixed(3));
                             handInfo.punchCount++;
-                            console.log('🔢 Emergency punch count:', handInfo.punchCount);
-                            
-                            // Set cooldown
-                            if (index === 0) {
-                                punchCooldown1 = PUNCH_COOLDOWN;
-                            } else {
-                                punchCooldown2 = PUNCH_COOLDOWN;
-                            }
-                            hand.userData.recentMaxVelocity = 0;
-                        }
-                        
-                        if (hand.userData.isFist && hand.userData.punchVelocity > 1.5) {
-                            console.log('💥 PUNCH TRIGGERED! Hand:', index, 'Velocity:', hand.userData.punchVelocity.toFixed(3), 'Previous count:', handInfo.punchCount);
-                            
-                            // Increment punch counter
-                            handInfo.punchCount++;
-                            console.log('🔢 New punch count for hand', index, ':', handInfo.punchCount);
+                            console.log('🔢 Punch count for hand', index, ':', handInfo.punchCount);
                             
                             // Immediate visual feedback
                             createParticleExplosion(hand.userData.handCenter.clone());
@@ -2988,10 +2972,11 @@
             
             // Initialize camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            const playerRig = new THREE.Group();
-            scene.add(playerRig);
-            playerRig.add(camera);
-            playerRig.position.set(0, 0, 3);
+            // Create global player rig for VR movement
+            window.playerRig = new THREE.Group();
+            scene.add(window.playerRig);
+            window.playerRig.add(camera);
+            window.playerRig.position.set(0, 0, 3);
             camera.position.set(0, 1.6, 0);
             
             // Initialize renderer with Quest 3 120fps optimizations
@@ -3061,7 +3046,7 @@
             const handModel1 = handModelFactory.createHandModel(hand1, 'mesh');
             handModel1.name = 'leftHandMesh';
             hand1.add(handModel1);
-            playerRig.add(hand1);
+            window.playerRig.add(hand1);
             console.log('✋ Left hand model created:', handModel1.type || 'mesh');
             
             // Right hand (index 1)  
@@ -3069,7 +3054,7 @@
             const handModel2 = handModelFactory.createHandModel(hand2, 'mesh');
             handModel2.name = 'rightHandMesh';
             hand2.add(handModel2);
-            playerRig.add(hand2);
+            window.playerRig.add(hand2);
             console.log('✋ Right hand model created:', handModel2.type || 'mesh');
             
             // Ensure no sphere fallback - force mesh type only
