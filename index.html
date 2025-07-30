@@ -243,6 +243,31 @@
             rightHand: { isFist: false, velocity: 0, cooldown: 0, thumbDist: 0, indexDist: 0, middleDist: 0, isReady: false, punchCount: 0 },
             frameCount: 0
         };
+        
+        // In-VR Console Log System
+        let vrConsoleLog = [];
+        const MAX_VR_LOG_LINES = 15;
+        
+        function addVRLog(message) {
+            const timestamp = performance.now().toFixed(0);
+            vrConsoleLog.push(`[${timestamp}] ${message}`);
+            if (vrConsoleLog.length > MAX_VR_LOG_LINES) {
+                vrConsoleLog.shift(); // Remove oldest log
+            }
+        }
+        
+        // Override console.log to capture logs
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            // Only capture specific debug messages for VR display
+            const message = args.join(' ');
+            if (message.includes('👊') || message.includes('⏰') || message.includes('🔍') || 
+                message.includes('🚀') || message.includes('⚠️') || message.includes('🔢') ||
+                message.includes('🌟') || message.includes('🔄') || message.includes('📊')) {
+                addVRLog(message);
+            }
+        };
 
         // --- NEW: Obstacles for boids to avoid ---
         // Tron trees and obstacles removed for performance
@@ -3088,6 +3113,23 @@
             ctx.fillText(`  Index: ${debugInfo.rightHand.indexDist.toFixed(3)} (<0.16)`, 10, y);
             y += 20;
             ctx.fillText(`  Middle: ${debugInfo.rightHand.middleDist.toFixed(3)} (<0.16)`, 10, y);
+            y += 40;
+            
+            // Display VR Console Log
+            ctx.fillText(`=== CONSOLE LOG ===`, 10, y);
+            y += 25;
+            ctx.font = '14px monospace'; // Smaller font for logs
+            ctx.fillStyle = '#ffff00'; // Yellow for logs
+            
+            for (let i = Math.max(0, vrConsoleLog.length - 12); i < vrConsoleLog.length; i++) {
+                const logEntry = vrConsoleLog[i];
+                if (logEntry) {
+                    // Truncate long log lines to fit
+                    const truncated = logEntry.length > 90 ? logEntry.substring(0, 87) + '...' : logEntry;
+                    ctx.fillText(truncated, 10, y);
+                    y += 16;
+                }
+            }
             
             // Update texture
             debugText.texture.needsUpdate = true;
