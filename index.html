@@ -2276,12 +2276,12 @@
             try {
                 const grabRadius = 0.15; // Increased grab radius
                 
-                // Start grabbing - SIMPLIFIED
-                if (hand.userData.isPinching && hand.userData.heldVoxelIndex === null && hand.userData.heldBoidIndex === null) {
+                // Start grabbing - SIMPLIFIED with safety checks
+                if (hand.userData.isPinching && hand.userData.heldVoxelIndex === null && hand.userData.heldBoidIndex === null && hand.userData.handCenter) {
                     // Try to grab ground voxels
                     for (let i = 0; i < groundVoxels.length; i++) {
                         const voxel = groundVoxels[i];
-                        if (voxel && voxel.active && voxel.position) {
+                        if (voxel && voxel.active && voxel.position && voxel.position.isVector3) {
                             const distance = hand.userData.handCenter.distanceTo(voxel.position);
                             if (distance < 0.3) {
                                 voxel.active = false;
@@ -2343,13 +2343,20 @@
                             console.log('Boid revived! Total boids:', boids.length);
                         } else {
                             // Return ground voxel to original position if released too early
-                            if (hand.userData.heldVoxelIndex < groundVoxels.length) {
+                            if (hand.userData.heldVoxelIndex < groundVoxels.length && hand.userData.heldVoxelIndex >= 0) {
                                 const voxel = groundVoxels[hand.userData.heldVoxelIndex];
-                                if (voxel) {
+                                if (voxel && voxel.position && heldVoxelMesh.position) {
                                     voxel.active = true;
                                     voxel.position.copy(heldVoxelMesh.position);
                                     voxel.position.y = 0.1; // Reset to ground level
                                     voxel.originalY = 0.1;
+                                    console.log(`Ground voxel ${hand.userData.heldVoxelIndex} returned to position:`, voxel.position.toArray());
+                                } else {
+                                    console.warn('Invalid voxel data during release:', { 
+                                        voxelExists: !!voxel, 
+                                        voxelPosition: voxel?.position,
+                                        heldMeshPosition: heldVoxelMesh.position 
+                                    });
                                 }
                             }
                             console.log('Ground voxel released');
@@ -2608,6 +2615,20 @@
                 updateHandData(hand2);
                 handleGrabbing(hand1, heldVoxelMesh1);
                 handleGrabbing(hand2, heldVoxelMesh2);
+                
+                // Update held voxel positions to follow hands
+                if (hand1.userData.heldVoxelIndex !== null || hand1.userData.heldBoidIndex !== null) {
+                    if (hand1.userData.handCenter && heldVoxelMesh1.visible) {
+                        heldVoxelMesh1.position.copy(hand1.userData.handCenter);
+                        heldVoxelMesh1.position.add(new THREE.Vector3(0, 0.05, 0)); // Slight offset above hand
+                    }
+                }
+                if (hand2.userData.heldVoxelIndex !== null || hand2.userData.heldBoidIndex !== null) {
+                    if (hand2.userData.handCenter && heldVoxelMesh2.visible) {
+                        heldVoxelMesh2.position.copy(hand2.userData.handCenter);
+                        heldVoxelMesh2.position.add(new THREE.Vector3(0, 0.05, 0)); // Slight offset above hand
+                    }
+                }
                 
                 // Game of Life touch interaction removed for performance
                 
