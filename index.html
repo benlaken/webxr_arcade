@@ -260,11 +260,12 @@
         const originalConsoleLog = console.log;
         console.log = function(...args) {
             originalConsoleLog.apply(console, args);
-            // Only capture specific debug messages for VR display
+            // Only capture hand-related debug messages for VR display
             const message = args.join(' ');
             if (message.includes('👊') || message.includes('⏰') || message.includes('🔍') || 
-                message.includes('🚀') || message.includes('⚠️') || message.includes('🔢') ||
-                message.includes('🌟') || message.includes('🔄') || message.includes('📊')) {
+                message.includes('⚠️') || message.includes('🔢') || message.includes('📊') ||
+                message.includes('✅') || message.includes('Hand') || message.includes('Fist') ||
+                message.includes('Cooldown') || message.includes('Punch') || message.includes('velocity')) {
                 addVRLog(message);
             }
         };
