@@ -1976,7 +1976,10 @@
                 
                 // Animate beam movement
                 const animateBeam = () => {
-                    const deltaTime = clock.getDelta();
+                    let deltaTime = clock.getDelta();
+                    // Fix deltaTime issues for beam movement
+                    if (deltaTime < 0.008) deltaTime = 0.008; // Min ~120fps
+                    if (deltaTime > 0.033) deltaTime = 0.016; // Max ~60fps
                     const moveDistance = beamSpeed * deltaTime;
                     travelDistance += moveDistance;
                     
@@ -2509,7 +2512,15 @@
             const elapsedTime = clock.getElapsedTime();
             const dummy = new THREE.Object3D();
             frameCount++;
-            const deltaTime = clock.getDelta();
+            let deltaTime = clock.getDelta();
+            // Fix deltaTime issues - clamp to reasonable values for 60-120fps
+            if (deltaTime < 0.008) deltaTime = 0.008; // Min ~120fps
+            if (deltaTime > 0.033) deltaTime = 0.016; // Max ~60fps, clamp to ~60fps
+            
+            // Debug deltaTime issues
+            if (frameCount % 60 === 0) {
+                console.log(`⏱️ deltaTime: ${deltaTime.toFixed(6)}s (${(1/deltaTime).toFixed(1)}fps)`);
+            }
             
             // Update frustum culling
             updateFrustumCulling();
