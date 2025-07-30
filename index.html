@@ -2234,7 +2234,7 @@
                                 hand.userData.holdStartTime = clock.getElapsedTime();
                                 
                                 heldVoxelMesh.material.color.set(0x6666ff);
-                                heldVoxelMesh.material.emissive.set(0x2222bb);
+                                // Note: emissive removed as MeshBasicMaterial doesn't support it
                                 heldVoxelMesh.visible = true;
                                 console.log('Grabbed ground voxel', i);
                                 return;
@@ -2253,7 +2253,7 @@
                             hand.userData.holdStartTime = clock.getElapsedTime();
                             
                             heldVoxelMesh.material.color.set(0xff4444);
-                            heldVoxelMesh.material.emissive.set(0xff2222);
+                            // Note: emissive removed as MeshBasicMaterial doesn't support it
                             heldVoxelMesh.visible = true;
                             console.log('Grabbed boid', i);
                             return;
@@ -2306,7 +2306,7 @@
                     } else if (isShaking) {
                         // Visual feedback for shaking - turn red
                         heldVoxelMesh.material.color.set(0xff0000);
-                        heldVoxelMesh.material.emissive.set(0xff0000);
+                        // Note: emissive removed as MeshBasicMaterial doesn't support it
                     }
                 }
                 
