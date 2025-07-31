@@ -2464,23 +2464,43 @@
                         
                         if (voxel?.active && voxel.position) {
                             try {
+                                console.log(`🔍 DEBUG: Checking voxel ${i} grab distance...`);
+                                console.log(`🔍 DEBUG: hand.userData.handCenter:`, hand.userData.handCenter);
+                                console.log(`🔍 DEBUG: voxel.position:`, voxel.position);
+                                
                                 const distance = hand.userData.handCenter.distanceTo(voxel.position);
+                                console.log(`🔍 DEBUG: Distance calculated: ${distance}`);
                                 
                                 if (distance < 0.3) {
+                                    console.log(`🔍 DEBUG: Distance < 0.3, attempting grab of voxel ${i}`);
+                                    
                                     // Safe state changes
+                                    console.log(`🔍 DEBUG: Setting voxel.active = false`);
                                     voxel.active = false;
+                                    console.log(`🔍 DEBUG: Setting hand.userData.heldVoxelIndex = ${i}`);
                                     hand.userData.heldVoxelIndex = i;
+                                    console.log(`🔍 DEBUG: Setting hand.userData.holdStartTime`);
                                     hand.userData.holdStartTime = clock.getElapsedTime();
                                     
                                     // Safe visual updates
-                                    heldVoxelMesh.material.color.set(0x6666ff);
-                                    heldVoxelMesh.visible = true;
-                                    console.log(`Grabbed ground voxel ${i}`); // Single log only
+                                    console.log(`🔍 DEBUG: About to set heldVoxelMesh.material.color...`);
+                                    console.log(`🔍 DEBUG: heldVoxelMesh:`, heldVoxelMesh);
+                                    console.log(`🔍 DEBUG: heldVoxelMesh.material:`, heldVoxelMesh.material);
+                                    console.log(`🔍 DEBUG: heldVoxelMesh.material.color:`, heldVoxelMesh.material.color);
                                     
+                                    heldVoxelMesh.material.color.set(0x6666ff);
+                                    console.log(`🔍 DEBUG: Color set successfully`);
+                                    
+                                    heldVoxelMesh.visible = true;
+                                    console.log(`🔍 DEBUG: Mesh visibility set to true`);
+                                    
+                                    console.log(`✅ SUCCESS: Grabbed ground voxel ${i}`);
                                     return;
                                 }
                             } catch (distanceError) {
-                                continue; // Skip this voxel silently
+                                console.error(`❌ CRASH in voxel ${i} grab:`, distanceError);
+                                console.error(`❌ Error stack:`, distanceError.stack);
+                                continue; // Skip this voxel
                             }
                         }
                     }
@@ -3171,6 +3191,14 @@
             if (aliveVoxelsMesh && boids.length > 0) {
                 aliveVoxelsMesh.count = boids.length;
                 
+                // Debug logging every 5 seconds
+                if (frameCount % 600 === 0) {
+                    console.log(`🐦 RENDER DEBUG: Found ${boids.length} boids to render, aliveVoxelsMesh count: ${aliveVoxelsMesh.count}`);
+                    if (boids.length > 0) {
+                        console.log(`🐦 First boid position:`, boids[0].position.toArray().map(v => v.toFixed(2)));
+                    }
+                }
+                
                 // Performance optimization: only update flocking every few frames for distant boids
                 const shouldUpdateFlocking = frameCount % OPTIMIZATION_INTERVAL === 0;
                 
@@ -3740,17 +3768,24 @@
         }
 
         async function createBoidsAsync() {
+            console.log(`🐦 Starting to create ${initialBoidCount} boids...`);
             for (let i = 0; i < initialBoidCount; i++) {
-                const boid = new Boid(
-                    new THREE.Vector3(
-                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS,
-                        Math.random() * (ATMOSPHERE_MAX_HEIGHT - 2) + 2, // 2-28m height
-                        (Math.random() - 0.5) * ATMOSPHERE_RADIUS
-                    )
+                const position = new THREE.Vector3(
+                    (Math.random() - 0.5) * ATMOSPHERE_RADIUS,
+                    Math.random() * (ATMOSPHERE_MAX_HEIGHT - 2) + 2, // 2-28m height
+                    (Math.random() - 0.5) * ATMOSPHERE_RADIUS
                 );
+                const boid = new Boid(position);
                 boids.push(boid);
+                
+                // Debug first few boids
+                if (i < 3) {
+                    console.log(`🐦 Created boid ${i} at position:`, position.toArray().map(v => v.toFixed(2)));
+                }
+                
                 if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0)); // Yield to prevent blocking
             }
+            console.log(`🐦 SUCCESS: Created ${boids.length} total boids, array length: ${boids.length}`);
         }
         
         function animate() {
