@@ -1524,51 +1524,9 @@
             // Create geometry and material for boids
             const boidSize = 0.15; // Larger for better VR visibility
             const boidGeometry = new THREE.BoxGeometry(boidSize, boidSize, boidSize);
-            const boidMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: { value: 0.0 },
-                    glowIntensity: { value: 1.5 }
-                },
-                vertexShader: `
-                    varying vec3 vNormal;
-                    varying vec3 vViewPosition;
-                    varying vec3 vInstanceColor;
-                    attribute vec3 instanceColor;
-
-                    void main() {
-                        vNormal = normalMatrix * normal;
-                        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-                        vViewPosition = -mvPosition.xyz;
-                        vInstanceColor = instanceColor;
-                        gl_Position = projectionMatrix * mvPosition;
-                    }
-                `,
-                fragmentShader: `
-                    uniform float time;
-                    uniform float glowIntensity;
-                    varying vec3 vNormal;
-                    varying vec3 vViewPosition;
-                    varying vec3 vInstanceColor;
-
-                    void main() {
-                        vec3 baseColor = vInstanceColor;
-                        // Dynamic color shift
-                        float hueShift = sin(time * 0.5 + vViewPosition.y * 0.1) * 0.1;
-                        vec3 shiftedColor = baseColor + vec3(hueShift, -hueShift * 0.5, hueShift * 0.5);
-                        shiftedColor = clamp(shiftedColor, 0.0, 1.0);
-
-                        // Glowing effect
-                        vec3 viewDirection = normalize(vViewPosition);
-                        float rim = 1.0 - max(dot(vNormal, viewDirection), 0.0);
-                        rim = pow(rim, 2.0) * glowIntensity;
-                        vec3 glow = shiftedColor * rim * 1.5;
-
-                        // Final color with glow
-                        vec3 finalColor = shiftedColor + glow;
-
-                        gl_FragColor = vec4(finalColor, 1.0);
-                    }
-                `,
+            // EMERGENCY: Use simple basic material to ensure boids are visible
+            const boidMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ffaa,
                 transparent: false
             });
             
@@ -1577,16 +1535,7 @@
             boidsMesh.name = 'alive_voxels';
             boidsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             
-            // Add instance color attribute for per-boid coloring
-            const instanceColors = new Float32Array(initialBoidCount * 3);
-            for (let i = 0; i < initialBoidCount; i++) {
-                // Initialize with base teal color
-                instanceColors[i * 3] = 0.0;      // R
-                instanceColors[i * 3 + 1] = 1.0;  // G 
-                instanceColors[i * 3 + 2] = 0.67; // B (0x00ffaa)
-            }
-            boidsMesh.instanceColor = new THREE.InstancedBufferAttribute(instanceColors, 3);
-            boidsMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+            // Instance colors removed - using basic material for reliability
             
             scene.add(boidsMesh);
             
@@ -3262,26 +3211,13 @@
                     dummy.updateMatrix();
                     aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
                     
-                    // Update enhanced instance color with pulsing effects
-                    if (aliveVoxelsMesh.instanceColor) {
-                        aliveVoxelsMesh.instanceColor.setXYZ(i, 
-                            boid.currentColor.r, 
-                            boid.currentColor.g, 
-                            boid.currentColor.b
-                        );
-                    }
+                    // Instance color updates removed - using basic material for reliability
                     
                     processedBoids++;
                 });
                 aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
-                if (aliveVoxelsMesh.instanceColor) {
-                    aliveVoxelsMesh.instanceColor.needsUpdate = true;
-                }
                 
-                // Update shader uniforms for dynamic effects
-                if (aliveVoxelsMesh.material && aliveVoxelsMesh.material.uniforms) {
-                    aliveVoxelsMesh.material.uniforms.time.value = elapsedTime;
-                }
+                // Shader uniforms removed - using basic material for reliability
                 
                 // Update predators with performance optimization
                 const predatorMesh = scene.getObjectByName('predators');
