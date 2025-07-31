@@ -141,8 +141,8 @@ The experience embraces clean, performance-focused aesthetics:
 Key parameters can be adjusted in the code:
 - `initialBoidCount`: Number of boids (default: 25)
 - `ASTEROID_COUNT`: Space battle density (default: 6)
-- `ASTEROID_SPEED`: Asteroid movement speed (default: 17.5, recently reduced 30%)
-- `SPACESHIP_SPEED`: Spaceship movement speed (default: 5.6, recently reduced 30%)
+- `ASTEROID_SPEED`: Asteroid movement speed (default: 12.25, reduced 30% twice for better visibility)
+- `SPACESHIP_SPEED`: Spaceship movement speed (default: 3.92, reduced 30% twice for better control)
 - `SHOOTING_STAR_SPAWN_RATE`: Meteor frequency
 - `fountainSpawnRate`: Fountain voxel generation rate
 - `TARGET_FRAME_RATE`: Performance target (default: 120fps)
