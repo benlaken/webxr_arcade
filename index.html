@@ -2111,10 +2111,10 @@
                 // Create beam projectile - larger for better VR visibility
                 const beamGeometry = new THREE.CylinderGeometry(0.08, 0.20, 3.0, 8);
                 const beamMaterial = new THREE.MeshBasicMaterial({
-                    color: 0x00ffff,
+                    color: 0xff3333, // Electric red
                     transparent: true,
                     opacity: 0.9, // Slightly more opaque
-                    emissive: 0x0099ff // Brighter emissive for better visibility
+                    emissive: 0xff1100 // Bright red emissive for electric effect
                 });
                 const beamMesh = new THREE.Mesh(beamGeometry, beamMaterial);
                 
@@ -2172,6 +2172,11 @@
                                         const forceDirection = beamData.direction.clone();
                                         const forceMagnitude = Math.max(0.5, (beamRadius - distanceToBeam) / beamRadius * 3.0);
                                         boid.velocity.add(forceDirection.multiplyScalar(forceMagnitude));
+                                        
+                                        // Apply red force punch effect to boid
+                                        boid.punchAffected = true;
+                                        boid.punchEffectEndTime = clock.getElapsedTime() + 2.0; // 2 seconds
+                                        boid.punchGlowColor = new THREE.Color(0xff2222); // Electric red to match beam
                                         
                                         // Visual hit effect
                                         createHitSpark(boid.position.clone());
@@ -2861,18 +2866,18 @@
                         }
                         
                         // EXTRA DEBUG: Log when we have a fist but low velocity
-                        if (hand.userData.isFist && rawVelocity < 2.5 && rawVelocity > 0.1) {
-                            console.log(`⚠️ FIST BUT LOW VELOCITY Hand ${index}: velocity=${rawVelocity.toFixed(3)}, need >2.5`);
+                        if (hand.userData.isFist && rawVelocity < 4.0 && rawVelocity > 0.1) {
+                            console.log(`⚠️ FIST BUT LOW VELOCITY Hand ${index}: velocity=${rawVelocity.toFixed(3)}, need >4.0`);
                         }
                         
                         // UNIFIED PUNCH DETECTION: Use raw velocity only
                         
                         // Debug logging every 30 frames when fist is detected
                         if (frameCount % 30 === 0 && hand.userData.isFist) {
-                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, RawVelocity=${rawVelocity.toFixed(3)}, Will punch=${rawVelocity > 2.5}`);
+                            console.log(`👊 PUNCH CHECK Hand ${index}: Fist=${hand.userData.isFist}, RawVelocity=${rawVelocity.toFixed(3)}, Will punch=${rawVelocity > 4.0}`);
                         }
                         
-                        if (hand.userData.isFist && rawVelocity > 2.5) {
+                        if (hand.userData.isFist && rawVelocity > 4.0) {
                             console.log('👊 PUNCH DETECTED! Hand:', index, 'Raw velocity:', rawVelocity.toFixed(3));
                             console.log('📊 Before increment - handInfo.punchCount:', handInfo.punchCount);
                             console.log('📊 debugInfo reference check:', index === 0 ? 'leftHand' : 'rightHand', debugInfo.leftHand.punchCount, debugInfo.rightHand.punchCount);
@@ -3368,7 +3373,7 @@
             y += 20;
             ctx.fillText(`  Fist: ${debugInfo.leftHand.isFist ? 'YES' : 'NO'}`, 10, y);
             y += 20;
-            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >2.5)`, 10, y);
+            ctx.fillText(`  Velocity: ${debugInfo.leftHand.velocity.toFixed(3)} (need >4.0)`, 10, y);
             y += 20;
             ctx.fillText(`  Punches: ${debugInfo.leftHand.punchCount}`, 10, y);
             y += 20;
@@ -3387,7 +3392,7 @@
             y += 20;
             ctx.fillText(`  Fist: ${debugInfo.rightHand.isFist ? 'YES' : 'NO'}`, 10, y);
             y += 20;
-            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >2.5)`, 10, y);
+            ctx.fillText(`  Velocity: ${debugInfo.rightHand.velocity.toFixed(3)} (need >4.0)`, 10, y);
             y += 20;
             ctx.fillText(`  Punches: ${debugInfo.rightHand.punchCount}`, 10, y);
             y += 20;
