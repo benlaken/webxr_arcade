@@ -1161,6 +1161,14 @@
                 this.punchEffectEndTime = 0;
                 this.punchGlowColor = new THREE.Color(0xff6600);
                 this.trailPositions = [];
+                
+                // Enhanced visual properties
+                this.pulsePhase = Math.random() * Math.PI * 2; // Random start phase
+                this.pulseSpeed = 0.8 + Math.random() * 0.4; // 0.8-1.2 speed variation
+                this.baseColor = new THREE.Color(0x00ffaa); // Base teal
+                this.currentColor = new THREE.Color(0x00ffaa);
+                this.colorChangeTime = 0;
+                this.lastStateChange = 0;
             }
             
             update() {
@@ -1181,6 +1189,9 @@
                     this.smoothedDirection.lerp(currentDirection, 0.1); // Smooth interpolation
                     this.smoothedDirection.normalize();
                 }
+                
+                // Update visual effects
+                this.updateVisualEffects();
                 
                 // Update punch effect trail
                 if (this.punchAffected) {
@@ -1382,6 +1393,42 @@
                 if (this.position.z > halfBound) this.velocity.z -= turnFactor;
                 if (this.position.z < -halfBound) this.velocity.z += turnFactor;
             }
+            
+            updateVisualEffects() {
+                const currentTime = clock.getElapsedTime();
+                
+                // Update pulse phase
+                this.pulsePhase += this.pulseSpeed * 0.02; // Slow pulsing
+                
+                // Calculate pulse intensity (0.7-1.0 range for subtle effect)
+                const pulseIntensity = 0.7 + Math.sin(this.pulsePhase) * 0.3;
+                
+                // Base color transitions based on boid state
+                let targetColor = this.baseColor;
+                
+                if (this.punchAffected) {
+                    // Orange glow when affected by punch
+                    targetColor = this.punchGlowColor;
+                } else if (this.isBeingTossed) {
+                    // Bright cyan when being tossed
+                    targetColor = new THREE.Color(0x00aaff);
+                } else {
+                    // Speed-based color variation (faster = more cyan, slower = more green)
+                    const speedFactor = Math.min(this.velocity.length() / this.maxSpeed, 1.0);
+                    const r = 0.0;
+                    const g = 1.0;
+                    const b = 0.4 + speedFactor * 0.27; // 0.4-0.67 range
+                    targetColor = new THREE.Color(r, g, b);
+                }
+                
+                // Smooth color transitions
+                this.currentColor.lerp(targetColor, 0.05);
+                
+                // Apply pulse intensity to current color
+                this.currentColor.r *= pulseIntensity;
+                this.currentColor.g *= pulseIntensity;
+                this.currentColor.b *= pulseIntensity;
+            }
         }
 
         function addFallbackControls() {
@@ -1483,10 +1530,22 @@
                 opacity: 1.0
             }); // Switched to Basic for Quest 3 perf, removed emissive as Basic doesn't support it
             
-            // Create instanced mesh for boids
+            // Create instanced mesh for boids with enhanced visuals
             const boidsMesh = new THREE.InstancedMesh(boidGeometry, boidMaterial, initialBoidCount);
             boidsMesh.name = 'alive_voxels';
             boidsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            
+            // Add instance color attribute for per-boid coloring
+            const instanceColors = new Float32Array(initialBoidCount * 3);
+            for (let i = 0; i < initialBoidCount; i++) {
+                // Initialize with base teal color
+                instanceColors[i * 3] = 0.0;      // R
+                instanceColors[i * 3 + 1] = 1.0;  // G 
+                instanceColors[i * 3 + 2] = 0.67; // B (0x00ffaa)
+            }
+            boidsMesh.instanceColor = new THREE.InstancedBufferAttribute(instanceColors, 3);
+            boidsMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+            
             scene.add(boidsMesh);
             
             // Initialize all boids with default matrices
@@ -3037,17 +3096,21 @@
                     dummy.updateMatrix();
                     aliveVoxelsMesh.setMatrixAt(i, dummy.matrix);
                     
-                    // Apply punch effect glow - DISABLED to fix trail dots issue
-                    if (boid.punchAffected) {
-                        // Create glowing effect by temporarily changing material
-                        const glowIntensity = Math.sin(clock.getElapsedTime() * 8) * 0.3 + 0.7;
-                        // Note: Individual material changes are expensive, so we'll use a visual trail instead
-                        // createPunchTrail(boid); // DISABLED - causing trail dots
+                    // Update enhanced instance color with pulsing effects
+                    if (aliveVoxelsMesh.instanceColor) {
+                        aliveVoxelsMesh.instanceColor.setXYZ(i, 
+                            boid.currentColor.r, 
+                            boid.currentColor.g, 
+                            boid.currentColor.b
+                        );
                     }
                     
                     processedBoids++;
                 });
                 aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
+                if (aliveVoxelsMesh.instanceColor) {
+                    aliveVoxelsMesh.instanceColor.needsUpdate = true;
+                }
                 
                 // Update predators with performance optimization
                 const predatorMesh = scene.getObjectByName('predators');
