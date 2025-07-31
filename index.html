@@ -492,18 +492,7 @@
                 ship.rotation.x = Math.PI / 2; // Point forward
                 shipGroup.add(ship);
                 
-                // Add engine glow effect
-                const engineGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-                const engineMaterial = new THREE.MeshBasicMaterial({
-                    color: 0x00ffff,
-                    emissive: 0x00aaff,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                const engineGlow = new THREE.Mesh(engineGeometry, engineMaterial);
-                engineGlow.position.z = -1.0; // Behind the ship
-                shipGroup.add(engineGlow);
-                this.engineGlow = engineGlow;
+                // Engine glow effect removed per user request
                 
                 this.mesh = shipGroup;
                 this.mesh.position.copy(this.position);
@@ -542,12 +531,7 @@
                     this.mesh.position.copy(this.position);
                     this.mesh.rotation.y = this.rotation;
                     
-                    // Update engine glow based on thrust
-                    if (this.engineGlow) {
-                        const thrustIntensity = this.thrust ? 1.0 : 0.3;
-                        this.engineGlow.material.opacity = 0.4 + thrustIntensity * 0.6;
-                        this.engineGlow.scale.set(thrustIntensity, thrustIntensity, thrustIntensity);
-                    }
+                    // Engine glow animation removed
                 }
                 
                 // Enhanced debug logging for spaceship movement
@@ -2060,8 +2044,8 @@
                 beamMesh.rotateX(Math.PI / 2); // Align cylinder with direction
                 scene.add(beamMesh);
                 
-                // Beam travel parameters - slowed for better visibility in VR
-                const beamSpeed = 8.0; // Units per second (reduced from 15.0)
+                // Beam travel parameters - increased speed by 40%
+                const beamSpeed = 11.2; // Units per second (8.0 * 1.4)
                 const beamRange = 15.0; // Maximum travel distance (reduced from 20.0)
                 const beamRadius = 1.5; // Effect radius
                 let travelDistance = 0;
