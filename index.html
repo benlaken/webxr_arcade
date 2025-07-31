@@ -2440,44 +2440,110 @@
         
         function handleGrabbing(hand, heldVoxelMesh) {
             try {
+                console.log(`🔍 GRABBING DEBUG: Starting handleGrabbing check`);
                 const grabRadius = 0.15; // Increased grab radius
                 
-                // Start grabbing - SIMPLIFIED with safety checks
+                // Extensive safety checks before attempting grab
+                if (!hand) {
+                    console.warn('❌ GRABBING ERROR: hand is null/undefined');
+                    return;
+                }
+                if (!hand.userData) {
+                    console.warn('❌ GRABBING ERROR: hand.userData is null/undefined');
+                    return;
+                }
+                if (!heldVoxelMesh) {
+                    console.warn('❌ GRABBING ERROR: heldVoxelMesh is null/undefined');
+                    return;
+                }
+                if (!heldVoxelMesh.material) {
+                    console.warn('❌ GRABBING ERROR: heldVoxelMesh.material is null/undefined');
+                    return;
+                }
+                if (!groundVoxels) {
+                    console.warn('❌ GRABBING ERROR: groundVoxels array is null/undefined');
+                    return;
+                }
+                
+                console.log(`🔍 GRABBING DEBUG: isPinching=${hand.userData.isPinching}, handCenter=${!!hand.userData.handCenter}, heldVoxelIndex=${hand.userData.heldVoxelIndex}, heldBoidIndex=${hand.userData.heldBoidIndex}`);
+                
+                // Start grabbing - ENHANCED with extensive safety checks
                 if (hand.userData.isPinching && hand.userData.heldVoxelIndex === null && hand.userData.heldBoidIndex === null && hand.userData.handCenter) {
+                    console.log(`🔍 GRABBING DEBUG: Attempting to grab from ${groundVoxels.length} ground voxels`);
+                    
                     // Try to grab ground voxels
                     for (let i = 0; i < groundVoxels.length; i++) {
                         const voxel = groundVoxels[i];
+                        console.log(`🔍 GRABBING DEBUG: Checking voxel ${i}:`, {
+                            exists: !!voxel,
+                            active: voxel?.active,
+                            hasPosition: !!voxel?.position,
+                            isVector3: voxel?.position?.isVector3
+                        });
+                        
                         if (voxel && voxel.active && voxel.position && voxel.position.isVector3) {
-                            const distance = hand.userData.handCenter.distanceTo(voxel.position);
-                            if (distance < 0.3) {
-                                voxel.active = false;
-                                hand.userData.heldVoxelIndex = i;
-                                hand.userData.holdStartTime = clock.getElapsedTime();
+                            try {
+                                const distance = hand.userData.handCenter.distanceTo(voxel.position);
+                                console.log(`🔍 GRABBING DEBUG: Voxel ${i} distance: ${distance.toFixed(3)}`);
                                 
-                                heldVoxelMesh.material.color.set(0x6666ff);
-                                // Note: emissive removed as MeshBasicMaterial doesn't support it
-                                heldVoxelMesh.visible = true;
-                                console.log('Grabbed ground voxel', i);
-                                return;
+                                if (distance < 0.3) {
+                                    console.log(`✅ GRABBING SUCCESS: Grabbing voxel ${i} at distance ${distance.toFixed(3)}`);
+                                    
+                                    // Safe state changes
+                                    voxel.active = false;
+                                    hand.userData.heldVoxelIndex = i;
+                                    hand.userData.holdStartTime = clock.getElapsedTime();
+                                    
+                                    // Safe visual updates
+                                    if (heldVoxelMesh.material && heldVoxelMesh.material.color) {
+                                        heldVoxelMesh.material.color.set(0x6666ff);
+                                        heldVoxelMesh.visible = true;
+                                        console.log(`✅ GRABBING SUCCESS: Visual state updated for voxel ${i}`);
+                                    } else {
+                                        console.warn('⚠️ GRABBING WARNING: Could not update visual state - material invalid');
+                                    }
+                                    
+                                    return;
+                                }
+                            } catch (distanceError) {
+                                console.error(`❌ GRABBING ERROR: Distance calculation failed for voxel ${i}:`, distanceError);
+                                continue; // Skip this voxel and try next
                             }
                         }
                     }
                     
-                    // Try to grab active boids
+                    // Try to grab active boids with enhanced debugging
+                    console.log(`🔍 GRABBING DEBUG: Attempting to grab from ${boids.length} boids`);
                     for (let i = 0; i < boids.length; i++) {
                         const boid = boids[i];
-                        if (boid && boid.position && !boid.isGrabbed && hand.userData.tipPositions.INDEX && hand.userData.tipPositions.INDEX.distanceTo(boid.position) < grabRadius) {
-                            boid.isGrabbed = true;
-                            boid.originalVelocity.copy(boid.velocity);
-                            hand.userData.heldBoidIndex = i;
-                            hand.userData.isGrabbingBoid = true;
-                            hand.userData.holdStartTime = clock.getElapsedTime();
-                            
-                            heldVoxelMesh.material.color.set(0xff4444);
-                            // Note: emissive removed as MeshBasicMaterial doesn't support it
-                            heldVoxelMesh.visible = true;
-                            console.log('Grabbed boid', i);
-                            return;
+                        
+                        try {
+                            if (boid && boid.position && !boid.isGrabbed && hand.userData.tipPositions && hand.userData.tipPositions.INDEX) {
+                                const distance = hand.userData.tipPositions.INDEX.distanceTo(boid.position);
+                                if (distance < grabRadius) {
+                                    console.log(`✅ BOID GRABBING SUCCESS: Grabbing boid ${i} at distance ${distance.toFixed(3)}`);
+                                    
+                                    // Safe state changes
+                                    boid.isGrabbed = true;
+                                    if (boid.originalVelocity && boid.velocity) {
+                                        boid.originalVelocity.copy(boid.velocity);
+                                    }
+                                    hand.userData.heldBoidIndex = i;
+                                    hand.userData.isGrabbingBoid = true;
+                                    hand.userData.holdStartTime = clock.getElapsedTime();
+                                    
+                                    // Safe visual updates
+                                    if (heldVoxelMesh.material && heldVoxelMesh.material.color) {
+                                        heldVoxelMesh.material.color.set(0xff4444);
+                                        heldVoxelMesh.visible = true;
+                                        console.log(`✅ BOID GRABBING SUCCESS: Visual state updated for boid ${i}`);
+                                    }
+                                    return;
+                                }
+                            }
+                        } catch (boidGrabError) {
+                            console.error(`❌ BOID GRABBING ERROR: Failed to grab boid ${i}:`, boidGrabError);
+                            continue; // Skip this boid and try next
                         }
                     }
                 }
@@ -2498,43 +2564,106 @@
                     }
                     
                     if (!hand.userData.isPinching) {
+                        console.log(`🔍 VOXEL RELEASE DEBUG: Starting release logic - isShaking=${isShaking}, holdDuration=${holdDuration.toFixed(2)}, REVIVAL_TIME=${REVIVAL_TIME}`);
+                        
                         if (isShaking && holdDuration >= 1.0) {
-                            // Create predator from vigorous shaking
-                            const predator = new Predator(heldVoxelMesh.position.clone());
-                            predators.push(predator);
-                            console.log('Predator created! Total predators:', predators.length);
-                        } else if (holdDuration >= REVIVAL_TIME) {
-                            // Normal revival
-                            boids.push(new Boid(heldVoxelMesh.position.clone()));
-                            console.log('Boid revived! Total boids:', boids.length);
-                        } else {
-                            // Return ground voxel to original position if released too early
-                            if (hand.userData.heldVoxelIndex < groundVoxels.length && hand.userData.heldVoxelIndex >= 0) {
-                                const voxel = groundVoxels[hand.userData.heldVoxelIndex];
-                                if (voxel && voxel.position && heldVoxelMesh.position) {
-                                    voxel.active = true;
-                                    voxel.position.copy(heldVoxelMesh.position);
-                                    voxel.position.y = 0.1; // Reset to ground level
-                                    voxel.originalY = 0.1;
-                                    console.log(`Ground voxel ${hand.userData.heldVoxelIndex} returned to position:`, voxel.position.toArray());
+                            console.log(`🦈 PREDATOR CREATION: Attempting to create predator`);
+                            try {
+                                // Create predator from vigorous shaking - with safety checks
+                                if (heldVoxelMesh && heldVoxelMesh.position) {
+                                    const predatorPosition = heldVoxelMesh.position.clone();
+                                    console.log(`🦈 PREDATOR CREATION: Position cloned:`, predatorPosition.toArray());
+                                    
+                                    const predator = new Predator(predatorPosition);
+                                    predators.push(predator);
+                                    console.log(`✅ PREDATOR CREATION SUCCESS: Total predators: ${predators.length}`);
                                 } else {
-                                    console.warn('Invalid voxel data during release:', { 
-                                        voxelExists: !!voxel, 
-                                        voxelPosition: voxel?.position,
-                                        heldMeshPosition: heldVoxelMesh.position 
-                                    });
+                                    console.error(`❌ PREDATOR CREATION FAILED: Invalid heldVoxelMesh position`);
                                 }
+                            } catch (predatorError) {
+                                console.error(`❌ PREDATOR CREATION FAILED:`, predatorError);
                             }
-                            console.log('Ground voxel released');
+                        } else if (holdDuration >= REVIVAL_TIME) {
+                            console.log(`🐟 BOID REVIVAL: Attempting to revive boid`);
+                            try {
+                                // Normal revival - with safety checks
+                                if (heldVoxelMesh && heldVoxelMesh.position) {
+                                    const boidPosition = heldVoxelMesh.position.clone();
+                                    console.log(`🐟 BOID REVIVAL: Position cloned:`, boidPosition.toArray());
+                                    
+                                    const newBoid = new Boid(boidPosition);
+                                    boids.push(newBoid);
+                                    console.log(`✅ BOID REVIVAL SUCCESS: Total boids: ${boids.length}`);
+                                } else {
+                                    console.error(`❌ BOID REVIVAL FAILED: Invalid heldVoxelMesh position`);
+                                }
+                            } catch (boidError) {
+                                console.error(`❌ BOID REVIVAL FAILED:`, boidError);
+                            }
+                        } else {
+                            console.log(`📦 VOXEL RETURN: Attempting to return voxel to ground`);
+                            try {
+                                // Return ground voxel to original position if released too early - ENHANCED SAFETY
+                                const voxelIndex = hand.userData.heldVoxelIndex;
+                                console.log(`📦 VOXEL RETURN: Index=${voxelIndex}, groundVoxels.length=${groundVoxels.length}`);
+                                
+                                if (voxelIndex !== null && voxelIndex >= 0 && voxelIndex < groundVoxels.length) {
+                                    const voxel = groundVoxels[voxelIndex];
+                                    console.log(`📦 VOXEL RETURN: Voxel exists=${!!voxel}, hasPosition=${!!voxel?.position}, heldMeshHasPosition=${!!heldVoxelMesh?.position}`);
+                                    
+                                    if (voxel && voxel.position && heldVoxelMesh && heldVoxelMesh.position) {
+                                        voxel.active = true;
+                                        voxel.position.copy(heldVoxelMesh.position);
+                                        voxel.position.y = 0.1; // Reset to ground level
+                                        voxel.originalY = 0.1;
+                                        console.log(`✅ VOXEL RETURN SUCCESS: Voxel ${voxelIndex} returned to position:`, voxel.position.toArray());
+                                    } else {
+                                        console.error(`❌ VOXEL RETURN FAILED: Invalid data:`, { 
+                                            voxelExists: !!voxel, 
+                                            voxelHasPosition: !!voxel?.position,
+                                            heldMeshExists: !!heldVoxelMesh,
+                                            heldMeshHasPosition: !!heldVoxelMesh?.position
+                                        });
+                                    }
+                                } else {
+                                    console.error(`❌ VOXEL RETURN FAILED: Invalid index=${voxelIndex}, array length=${groundVoxels.length}`);
+                                }
+                            } catch (returnError) {
+                                console.error(`❌ VOXEL RETURN FAILED:`, returnError);
+                            }
                         }
                         
-                        hand.userData.heldVoxelIndex = null;
-                        heldVoxelMesh.visible = false;
-                        heldVoxelMesh.position.set(0, -1000, 0); // Move far away
+                        // Safe cleanup
+                        try {
+                            console.log(`🧹 VOXEL CLEANUP: Starting cleanup`);
+                            hand.userData.heldVoxelIndex = null;
+                            
+                            if (heldVoxelMesh) {
+                                heldVoxelMesh.visible = false;
+                                if (heldVoxelMesh.position) {
+                                    heldVoxelMesh.position.set(0, -1000, 0); // Move far away
+                                }
+                                console.log(`✅ VOXEL CLEANUP SUCCESS: Held mesh reset`);
+                            } else {
+                                console.warn(`⚠️ VOXEL CLEANUP WARNING: heldVoxelMesh is null`);
+                            }
+                        } catch (cleanupError) {
+                            console.error(`❌ VOXEL CLEANUP FAILED:`, cleanupError);
+                        }
+                        
                     } else if (isShaking) {
-                        // Visual feedback for shaking - turn red
-                        heldVoxelMesh.material.color.set(0xff0000);
-                        // Note: emissive removed as MeshBasicMaterial doesn't support it
+                        console.log(`🔥 SHAKING VISUAL: Updating shake visual feedback`);
+                        try {
+                            // Visual feedback for shaking - turn red - with safety checks
+                            if (heldVoxelMesh && heldVoxelMesh.material && heldVoxelMesh.material.color) {
+                                heldVoxelMesh.material.color.set(0xff0000);
+                                console.log(`✅ SHAKING VISUAL SUCCESS: Color updated to red`);
+                            } else {
+                                console.warn(`⚠️ SHAKING VISUAL WARNING: Invalid material or color property`);
+                            }
+                        } catch (shakeError) {
+                            console.error(`❌ SHAKING VISUAL FAILED:`, shakeError);
+                        }
                     }
                 }
                 
@@ -2557,7 +2686,35 @@
                     }
                 }
             } catch (error) {
-                console.warn('Grabbing error:', error);
+                console.error('🚨 CRITICAL GRABBING ERROR - MAIN HANDLER:', error);
+                console.error('🚨 ERROR STACK:', error.stack);
+                console.error('🚨 ERROR CONTEXT:', {
+                    handExists: !!hand,
+                    handUserDataExists: !!hand?.userData,
+                    heldVoxelMeshExists: !!heldVoxelMesh,
+                    groundVoxelsExists: !!groundVoxels,
+                    groundVoxelsLength: groundVoxels?.length,
+                    boidsExists: !!boids,
+                    boidsLength: boids?.length
+                });
+                
+                // Emergency cleanup to prevent crash propagation
+                try {
+                    if (hand && hand.userData) {
+                        hand.userData.heldVoxelIndex = null;
+                        hand.userData.heldBoidIndex = null;
+                        hand.userData.isGrabbingBoid = false;
+                    }
+                    if (heldVoxelMesh) {
+                        heldVoxelMesh.visible = false;
+                        if (heldVoxelMesh.position) {
+                            heldVoxelMesh.position.set(0, -1000, 0);
+                        }
+                    }
+                    console.log('🆘 EMERGENCY CLEANUP: Grabbing state reset after error');
+                } catch (cleanupError) {
+                    console.error('🚨 EMERGENCY CLEANUP FAILED:', cleanupError);
+                }
             }
         }
         
