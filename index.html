@@ -2074,12 +2074,33 @@
         function updateActiveBeams(deltaTime) {
             for (let i = activeBeams.length - 1; i >= 0; i--) {
                 const beam = activeBeams[i];
-                if (beam.update) {
-                    const shouldRemove = beam.update(deltaTime);
-                    if (shouldRemove) {
-                        beam.cleanup();
+                if (beam && beam.update) {
+                    try {
+                        const shouldRemove = beam.update(deltaTime);
+                        if (shouldRemove) {
+                            beam.cleanup();
+                            // Remove from active beams array to prevent reprocessing
+                            activeBeams.splice(i, 1);
+                            console.log(`🗑️ Removed beam from active list, ${activeBeams.length} beams remaining`);
+                        }
+                    } catch (error) {
+                        console.error('Beam update error:', error);
+                        // Force cleanup on error to prevent stuck beams
+                        if (beam.cleanup) beam.cleanup();
+                        activeBeams.splice(i, 1);
+                        console.log(`⚠️ Force removed errored beam, ${activeBeams.length} beams remaining`);
                     }
+                } else {
+                    // Remove invalid beam objects
+                    console.warn('Invalid beam object found, removing');
+                    activeBeams.splice(i, 1);
                 }
+            }
+            
+            // Safety check: if we have too many active beams, something is wrong
+            if (activeBeams.length > 10) {
+                console.warn(`⚠️ Too many active beams (${activeBeams.length}), forcing cleanup of old ones`);
+                cleanupAllBeams();
             }
         }
         
@@ -2175,10 +2196,8 @@
                             scene.remove(beamMesh);
                             beamGeometry.dispose();
                             beamMaterial.dispose();
-                            // Remove from active beams
-                            const index = activeBeams.indexOf(beamData);
-                            if (index > -1) activeBeams.splice(index, 1);
                             console.log('🗑️ Force beam cleaned up');
+                            // Note: Array removal handled by updateActiveBeams to prevent double-removal
                         }
                     }
                 };
@@ -2197,9 +2216,9 @@
         // Cleanup function for all active beams (call when needed)
         function cleanupAllBeams() {
             console.log(`🧹 Cleaning up ${activeBeams.length} active beams`);
-            while (activeBeams.length > 0) {
-                activeBeams[0].cleanup();
-            }
+            // Cleanup all beams and clear the array
+            activeBeams.forEach(beam => beam.cleanup());
+            activeBeams.length = 0; // Clear the array
         }
         
         function createMuzzleFlash(position) {
