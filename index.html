@@ -1524,11 +1524,53 @@
             // Create geometry and material for boids
             const boidSize = 0.15; // Larger for better VR visibility
             const boidGeometry = new THREE.BoxGeometry(boidSize, boidSize, boidSize);
-            const boidMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x00ffaa, 
-                transparent: false, // Disable for mobile perf
-                opacity: 1.0
-            }); // Switched to Basic for Quest 3 perf, removed emissive as Basic doesn't support it
+            const boidMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0.0 },
+                    glowIntensity: { value: 1.5 }
+                },
+                vertexShader: `
+                    varying vec3 vNormal;
+                    varying vec3 vViewPosition;
+                    varying vec3 vInstanceColor;
+                    attribute vec3 instanceColor;
+
+                    void main() {
+                        vNormal = normalMatrix * normal;
+                        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+                        vViewPosition = -mvPosition.xyz;
+                        vInstanceColor = instanceColor;
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float glowIntensity;
+                    varying vec3 vNormal;
+                    varying vec3 vViewPosition;
+                    varying vec3 vInstanceColor;
+
+                    void main() {
+                        vec3 baseColor = vInstanceColor;
+                        // Dynamic color shift
+                        float hueShift = sin(time * 0.5 + vViewPosition.y * 0.1) * 0.1;
+                        vec3 shiftedColor = baseColor + vec3(hueShift, -hueShift * 0.5, hueShift * 0.5);
+                        shiftedColor = clamp(shiftedColor, 0.0, 1.0);
+
+                        // Glowing effect
+                        vec3 viewDirection = normalize(vViewPosition);
+                        float rim = 1.0 - max(dot(vNormal, viewDirection), 0.0);
+                        rim = pow(rim, 2.0) * glowIntensity;
+                        vec3 glow = shiftedColor * rim * 1.5;
+
+                        // Final color with glow
+                        vec3 finalColor = shiftedColor + glow;
+
+                        gl_FragColor = vec4(finalColor, 1.0);
+                    }
+                `,
+                transparent: false
+            });
             
             // Create instanced mesh for boids with enhanced visuals
             const boidsMesh = new THREE.InstancedMesh(boidGeometry, boidMaterial, initialBoidCount);
@@ -1814,46 +1856,24 @@
                 console.log('🚀 Teleporting to:', targetPosition);
                 
                 if (renderer.xr.isPresenting) {
-                    // VR Mode: Use XR reference space
+                    // VR Mode: Use XR reference space - SIMPLIFIED APPROACH
                     const xrReferenceSpace = renderer.xr.getReferenceSpace();
-                    const session = renderer.xr.getSession();
                     
-                    if (session && session.requestReferenceSpace) {
-                        // Calculate offset to teleport position
-                        // Keep the user at ground level + comfortable VR height
+                    if (xrReferenceSpace) {
+                        // Simple teleport - move reference space to target position
+                        // Keep user at ground level + standard VR height
                         const teleportY = 1.6; // Standard VR height above ground
-                        // Get current reference space position
-                        const currentPose = renderer.xr.getFrame().getViewerPose(xrReferenceSpace);
-                        if (currentPose) {
-                            const currentPosition = currentPose.transform.position;
-                            const offsetX = targetPosition.x - currentPosition.x;
-                            const offsetY = teleportY - currentPosition.y; // Adjust to ground level + height
-                            const offsetZ = targetPosition.z - currentPosition.z;
-                            
-                            const transform = new XRRigidTransform(
-                                {x: offsetX, y: offsetY, z: offsetZ},
-                                {x: 0, y: 0, z: 0, w: 1}
-                            );
-                            
-                            const offsetReferenceSpace = xrReferenceSpace.getOffsetReferenceSpace(transform);
-                            renderer.xr.setReferenceSpace(offsetReferenceSpace);
-                            console.log('✅ XR Teleport completed with offset:', {offsetX, offsetY, offsetZ});
-                        } else {
-                            console.warn('⚠️ Could not get current viewer pose for teleport');
-                        }
                         
+                        const transform = new XRRigidTransform(
+                            {x: -targetPosition.x, y: 0, z: -targetPosition.z},
+                            {x: 0, y: 0, z: 0, w: 1}
+                        );
+                        
+                        const offsetReferenceSpace = xrReferenceSpace.getOffsetReferenceSpace(transform);
+                        renderer.xr.setReferenceSpace(offsetReferenceSpace);
                         console.log('✅ XR Teleport completed to:', targetPosition.toArray().map(v => v.toFixed(2)));
                     } else {
-                        // Fallback: Move the VR camera group
-                        const vrCamera = renderer.xr.getCamera();
-                        if (vrCamera.parent) {
-                            vrCamera.parent.position.set(
-                                -targetPosition.x,
-                                1.6 - targetPosition.y, // Keep above ground
-                                -targetPosition.z
-                            );
-                            console.log('✅ VR Camera teleport completed');
-                        }
+                        console.warn('⚠️ Could not get XR reference space');
                     }
                 } else {
                     // Desktop mode - move scene
@@ -2680,6 +2700,17 @@
                 
                 // All joints available - hand is ready
                 hand.userData.isReady = true;
+
+                // Initialize tipPositions if not exist
+                if (!hand.userData.tipPositions) {
+                    hand.userData.tipPositions = {
+                        THUMB: new THREE.Vector3(),
+                        INDEX: new THREE.Vector3(),
+                        MIDDLE: new THREE.Vector3(),
+                        RING: new THREE.Vector3(),
+                        LITTLE: new THREE.Vector3()
+                    };
+                }
                 
                 // Store previous hand center for velocity - prevent initial velocity spike
                 const isFirstFrame = !hand.userData.handCenter || hand.userData.handCenter.length() === 0;
@@ -2758,16 +2789,26 @@
                     handInfo.middleDist = middleToWrist;
                 }
                 
-                // Pointing detection for teleportation
+                // Pointing detection for teleportation (right hand only)
                 if (hand.userData.debugHandIndex === 1) { // Right hand only
-                    // Simple pointing: index finger extended, others curled
-                    const indexExtended = indexToWrist > 0.15;
-                    const othersRetracted = thumbToWrist < 0.12 && middleToWrist < 0.12;
-                    hand.userData.isPointing = indexExtended && othersRetracted;
+                    // Relaxed pointing detection: index finger extended, others curled
+                    const indexExtended = indexToWrist > 0.12; // Lowered threshold
+                    const thumbRetracted = thumbToWrist < 0.14; // Slightly more lenient
+                    const middleRetracted = middleToWrist < 0.14; // Slightly more lenient
                     
-                    // Debug pointing detection
-                    if (frameCount % 60 === 0) {
-                        console.log(`👉 POINTING CHECK: index=${indexToWrist.toFixed(3)}(need >0.15), thumb=${thumbToWrist.toFixed(3)}(<0.12), middle=${middleToWrist.toFixed(3)}(<0.12), isPointing=${hand.userData.isPointing}`);
+                    // Check ring and pinky if available
+                    let otherFingersRetracted = thumbRetracted && middleRetracted;
+                    if (hand.userData.tipPositions.RING && hand.userData.tipPositions.LITTLE) {
+                        const ringToWrist = hand.userData.tipPositions.RING.distanceTo(wristPosition);
+                        const pinkyToWrist = hand.userData.tipPositions.LITTLE.distanceTo(wristPosition);
+                        otherFingersRetracted = otherFingersRetracted && ringToWrist < 0.14 && pinkyToWrist < 0.14;
+                    }
+                    
+                    hand.userData.isPointing = indexExtended && otherFingersRetracted;
+                    
+                    // Debug pointing detection - more frequent when close
+                    if (frameCount % 30 === 0 || (indexExtended && !hand.userData.isPointing)) {
+                        console.log(`👉 POINTING: index=${indexToWrist.toFixed(3)}(>${0.12}), thumb=${thumbToWrist.toFixed(3)}(<${0.14}), middle=${middleToWrist.toFixed(3)}(<${0.14}), pointing=${hand.userData.isPointing}`);
                     }
                 }
                 
@@ -2989,6 +3030,30 @@
                         return true;
                     });
                 }
+                
+                // Add ambient air particles occasionally for atmosphere
+                if (frameCount % 120 === 0 && particles.length < 20) {  // Every ~1s at 120fps, max 20 particles
+                    for (let i = 0; i < 2; i++) {  // Spawn 2 at a time
+                        const particle = getParticleFromPool();
+                        if (particle) {
+                            particle.position.set(
+                                (Math.random() - 0.5) * 20,
+                                Math.random() * 10 + 2,  // 2-12m height
+                                (Math.random() - 0.5) * 20
+                            );
+                            particle.velocity.set(
+                                (Math.random() - 0.5) * 0.1,
+                                (Math.random() - 0.5) * 0.05,
+                                (Math.random() - 0.5) * 0.1
+                            );
+                            particle.life = Math.random() * 10 + 5;  // 5-15s lifetime
+                            particle.maxLife = particle.life;
+                            particle.color = new THREE.Color().setHSL(Math.random(), 0.3, 0.8);  // Soft pastel colors
+                            particles.push(particle);
+                        }
+                    }
+                }
+                
             } catch (error) {
                 console.warn('Particle update error:', error);
                 particles.forEach(p => returnParticleToPool(p));
