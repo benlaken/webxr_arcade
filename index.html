@@ -1599,13 +1599,16 @@
             }
             boidsMesh.instanceMatrix.needsUpdate = true;
             
-            // Create held voxel meshes for both hands
-            heldVoxelMesh1 = new THREE.Mesh(boidGeometry, boidMaterial.clone());
+            // Create held voxel meshes for both hands with basic material (for color changes)
+            const heldVoxelMaterial1 = new THREE.MeshBasicMaterial({ color: 0x00ffaa });
+            const heldVoxelMaterial2 = new THREE.MeshBasicMaterial({ color: 0x00ffaa });
+            
+            heldVoxelMesh1 = new THREE.Mesh(boidGeometry, heldVoxelMaterial1);
             heldVoxelMesh1.visible = false;
             heldVoxelMesh1.position.set(0, -1000, 0);
             scene.add(heldVoxelMesh1);
             
-            heldVoxelMesh2 = new THREE.Mesh(boidGeometry, boidMaterial.clone());
+            heldVoxelMesh2 = new THREE.Mesh(boidGeometry, heldVoxelMaterial2);
             heldVoxelMesh2.visible = false;
             heldVoxelMesh2.position.set(0, -1000, 0);
             scene.add(heldVoxelMesh2);
@@ -3245,6 +3248,11 @@
                 aliveVoxelsMesh.instanceMatrix.needsUpdate = true;
                 if (aliveVoxelsMesh.instanceColor) {
                     aliveVoxelsMesh.instanceColor.needsUpdate = true;
+                }
+                
+                // Update shader uniforms for dynamic effects
+                if (aliveVoxelsMesh.material && aliveVoxelsMesh.material.uniforms) {
+                    aliveVoxelsMesh.material.uniforms.time.value = elapsedTime;
                 }
                 
                 // Update predators with performance optimization
